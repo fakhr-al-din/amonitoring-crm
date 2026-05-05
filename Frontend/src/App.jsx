@@ -9,6 +9,7 @@ import Entrance from './components/Entrance';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import Requests from './components/Requests'; // <-- Подключили нашу новую таблицу заявок!
+import Employees from './components/Employees';
 
 
 
@@ -56,7 +57,7 @@ export default function App() {
               {/* ВОТ ОН! Наш новый роут для заявок */}
               <Route path="/requests" element={<Requests />} /> 
               
-              <Route path="/employees" element={<div style={{ padding: '20px' }}><h2>Сотрудники</h2></div>} />
+              <Route path="/employees" element={<Employees />} />
               <Route path="/settings" element={<div style={{ padding: '20px' }}><h2>Настройки</h2></div>} />
               
               {/* Если ввели неизвестный адрес — кидаем на главную */}

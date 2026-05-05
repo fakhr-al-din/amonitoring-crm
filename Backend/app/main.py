@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import clients, requests, vehicles, auth, admin
+from app.routers import clients, requests, vehicles, auth, admin, users
 
 app = FastAPI(title="AMonitoring CRM API", version="1.0.0")
 
@@ -19,6 +19,7 @@ app.include_router(requests.router)
 app.include_router(vehicles.router)
 app.include_router(auth.router)
 app.include_router(admin.router)
+app.include_router(users.router)
 
 @app.get("/", include_in_schema=False)
 def main_root():

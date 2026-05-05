@@ -10,12 +10,16 @@ class RequestCreate(BaseModel):
     vehicle_id: int
     work_type: str
     visit_type: str
+    city: str | None = None  # <-- ДОБАВЛЕНО
     installation: InstallationDetails | None = None
 
 class RequestUpdate(BaseModel):
     status: str | None = None
     is_paid: Optional[bool] = None   # для обновления статуса оплаты
     installation: InstallationDetails | None = None  # для обновления деталей установки
+    city: str | None = None  # <-- ДОБАВЛЕНО
+    work_type: str | None = None
+    visit_type: str | None = None
 
 class CommentCreate(BaseModel):
     request_id: int
@@ -25,7 +29,7 @@ class AssignRequest(BaseModel):
     technician_id: int
 
 class ClientCreate(BaseModel):
-    type: str  # TOO / IP / INDIVIDUAL
+    type: str
     name: str
     company_name: str | None = None
     phone: str
@@ -33,7 +37,7 @@ class ClientCreate(BaseModel):
 
 class VehicleCreate(BaseModel):
     client_id: int
-    brand: str
+    brand: str       # <-- УБЕДИСЬ ЧТО ТУТ ЕСТЬ BRAND
     model: str
     plate_number: str
     vin: str | None = None
@@ -44,4 +48,4 @@ class UserCreate(BaseModel):
     email: str
     password: str
     name: str
-    role: str # ADMIN, MANAGER, TECHNICIAN, SENIOR_TECHNICIAN
+    role: str

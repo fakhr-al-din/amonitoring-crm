@@ -93,12 +93,20 @@ export default function Approvals() {
                   {translateRole(user.role)}
                 </span>
               </div>
-              <div className="approval-actions">
+             <div className="approval-actions" style={{ display: 'flex', gap: '10px' }}>
                 <button 
                   className="approve-btn" 
                   onClick={() => handleApprove(user.id)}
+                  style={{ background: '#5e9424', color: 'white', padding: '8px 15px', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
                 >
                   ✓ Одобрить
+                </button>
+                <button 
+                  className="reject-btn" 
+                  onClick={() => handleReject(user.id)}
+                  style={{ background: '#ffebee', color: '#c62828', padding: '8px 15px', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                >
+                  ✕ Отклонить
                 </button>
               </div>
             </div>
@@ -106,5 +114,29 @@ export default function Approvals() {
         </div>
       )}
     </div>
+    
   );
+  const handleReject = async (userId) => {
+    if (!window.confirm('Вы уверены, что хотите отклонить и удалить этого сотрудника?')) return;
+    
+    try {
+      const token = localStorage.getItem('access_token');
+      const response = await fetch(`http://127.0.0.1:8000/admin/reject-user/${userId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Ошибка при отклонении');
+      }
+
+      setPendingUsers(pendingUsers.filter(user => user.id !== userId));
+      alert('Заявка сотрудника отклонена и удалена.');
+      
+    } catch (err) {
+      alert(err.message);
+    }
+  };
 }

@@ -36,3 +36,34 @@ def approve_user(user_id: int, admin: dict = Depends(get_current_admin)):
             return {"message": f"User {user_id} has been approved"}
     finally:
         connection.close()
+
+@router.delete("/reject-user/{user_id}")
+def reject_user(user_id: int, admin: dict = Depends(get_current_admin)):
+    """Отклонение и удаление пользователя администратором"""
+    connection = get_connection()
+    try:
+        with connection.cursor() as cursor:
+            # Проверяем, существует ли такой пользователь
+            cursor.execute("SELECT id FROM users WHERE id = %s", (user_id,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="User not found")
+
+            # Удаляем пользователя
+            cursor.execute("DELETE FROM users WHERE id = %s", (user_id,))
+            connection.commit()
+            return {"message": f"User {user_id} has been rejected and deleted"}
+    finally:
+        connection.close()
+
+@router.get("/users")
+def get_all_users(admin: dict = Depends(get_current_admin)):
+    connection = get_connection()
+    try:
+        with connection.cursor() as cursor:
+            # Используем 1 вместо TRUE (в MySQL так надежнее)
+            cursor.execute("SELECT id, name, email, role FROM users WHERE is_approved = 1")
+            users = cursor.fetchall()
+            
+            return users
+    finally:
+        connection.close()

@@ -51,6 +51,7 @@ def sync_db():
                         work_type ENUM('INSTALLATION', 'DIAGNOSTIC', 'REMOVAL'),
                         visit_type ENUM('IN_OFFICE', 'ON_SITE'),
                         address TEXT,
+                        city TEXT,
                         scheduled_at DATETIME,
                         status ENUM('NEW', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED') DEFAULT 'NEW',
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

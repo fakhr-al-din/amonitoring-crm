@@ -11,18 +11,19 @@ def create_request(data: RequestCreate, current_user: dict = Depends(get_current
     connection = get_connection()
     try:
         with connection.cursor() as cursor:
-            # 1. создаём заявку
+            # 1. создаём заявку (Добавлено поле city)
             sql = """
             INSERT INTO requests 
-            (client_id, vehicle_id, work_type, visit_type, status)
-            VALUES (%s, %s, %s, %s, %s)
+            (client_id, vehicle_id, work_type, visit_type, status, city)
+            VALUES (%s, %s, %s, %s, %s, %s)
             """
             cursor.execute(sql, (
                 data.client_id,
                 data.vehicle_id,
                 data.work_type,
                 data.visit_type,
-                "NEW"
+                "NEW",
+                data.city # <-- Сохраняем город в заявку
             ))
 
             request_id = cursor.lastrowid
@@ -85,8 +86,8 @@ def update_request(request_id: int, data: RequestUpdate, current_user: dict = De
     connection = get_connection()
 
     ALLOWED_TRANSITIONS = {
-        "NEW": ["IN_PROGRESS"],
-        "IN_PROGRESS": ["DONE"],
+        "NEW": ["IN_PROGRESS", "CANCELLED"],
+        "IN_PROGRESS": ["DONE", "CANCELLED"],
         "DONE": []
     }
     ALLOWED_ROLES = ["ADMIN", "SENIOR_TECHNICIAN", "MANAGER", "ACCOUNTANT"]

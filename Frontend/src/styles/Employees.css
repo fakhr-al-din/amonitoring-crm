@@ -1,0 +1,123 @@
+.employees-page {
+  padding: 20px;
+  background-color: #fff;
+  min-height: 100vh;
+}
+
+.employees-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 5px;
+}
+
+.employees-header h2 {
+  color: #2e5902; /* Темно-зеленый как на скрине */
+  margin: 0;
+  font-size: 24px;
+}
+
+.add-emp-btn {
+  background: #5e9424;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.add-emp-btn:hover {
+  opacity: 0.9;
+}
+
+.employees-subtitle {
+  color: #a0a0a0;
+  font-size: 13px;
+  font-style: italic;
+  margin-bottom: 25px;
+}
+
+/* Сетка карточек */
+.employees-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 20px;
+}
+
+.emp-card {
+  border: 1px solid #eaeaea;
+  border-radius: 8px;
+  padding: 20px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.02);
+}
+
+/* Специальная обводка для админа */
+.emp-card.admin-card {
+  border-color: #cddc39;
+  background: #fafafa;
+}
+
+.emp-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: #222;
+  margin-bottom: 5px;
+}
+
+.emp-email {
+  font-size: 13px;
+  color: #888;
+  margin-bottom: 15px;
+}
+
+/* Бейджи ролей */
+.role-badge {
+  display: inline-block;
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 20px;
+  width: fit-content;
+}
+
+.role-admin { background: #f0f4c3; color: #558b2f; }
+.role-manager { background: #e3f2fd; color: #1565c0; }
+.role-senior { background: #fff3e0; color: #e65100; }
+.role-tech { background: #f5f5f5; color: #616161; }
+
+/* Кнопки внизу карточки */
+.emp-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: auto;
+}
+
+.btn-edit, .btn-delete {
+  flex: 1;
+  padding: 8px;
+  border: none;
+  border-radius: 4px;
+  font-weight: 500;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.btn-edit {
+  background: #f1f8e9;
+  color: #558b2f;
+}
+
+.btn-edit:hover { background: #dcedc8; }
+
+.btn-delete {
+  background: #ffebee;
+  color: #c62828;
+}
+
+.btn-delete:hover { background: #ffcdd2; }

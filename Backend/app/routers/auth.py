@@ -17,19 +17,34 @@ def register(data: UserCreate):
             if cursor.fetchone():
                 raise HTTPException(status_code=400, detail="Email already registered")
 
+            # Проверяем, есть ли уже пользователи в базе
+            cursor.execute("SELECT COUNT(*) as count FROM users")
+            user_count = cursor.fetchone()["count"]
+
+            # Если база пустая, первый юзер становится Админом и сразу одобряется
+            if user_count == 0:
+                final_role = "ADMIN"
+                is_approved = True
+            else:
+                final_role = data.role # или роль по умолчанию, например "TECHNICIAN"
+                is_approved = False
+
             # Хэшируем пароль и сохраняем
             hashed = hash_password(data.password)
             sql = """
             INSERT INTO users (email, hashed_password, name, role, is_approved)
             VALUES (%s, %s, %s, %s, %s)
             """
-            cursor.execute(sql, (data.email, hashed, data.name, data.role, False))
+            cursor.execute(sql, (data.email, hashed, data.name, final_role, is_approved))
             connection.commit()
             
-        return {"message": "Registration request sent. Wait for admin approval."}
+            if is_approved:
+                return {"message": "You are the first user! Admin account created and approved automatically."}
+            else:
+                return {"message": "Registration request sent. Wait for admin approval."}
     finally:
         connection.close()
-
+        
 @router.post("/login")
 def login(form_data: OAuth2PasswordRequestForm = Depends()):
     connection = get_connection()
