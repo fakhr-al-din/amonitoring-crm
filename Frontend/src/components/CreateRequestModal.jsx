@@ -4,6 +4,8 @@ export default function CreateRequestModal({ isOpen, onClose, onCreated, editReq
   const [clientKind, setClientKind] = useState('new');
   const [clientsList, setClientsList] = useState([]);
   const [clientVehicles, setClientVehicles] = useState([]); 
+  const [technicians, setTechnicians] = useState([]);
+  const [selectedTech, setSelectedTech] = useState('');
 
   const isEditMode = !!editRequestData; 
 

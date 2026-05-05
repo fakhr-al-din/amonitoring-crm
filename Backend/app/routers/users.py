@@ -46,3 +46,15 @@ def reject_user(user_id: int, current_user: dict = Depends(get_current_user)):
             return {"message": "User rejected and deleted"}
     finally:
         connection.close()
+
+# Добавь этот роут, чтобы фронтенд мог получать список монтажников
+@router.get("/technicians")
+def get_technicians(current_user: dict = Depends(get_current_user)):
+    connection = get_connection()
+    try:
+        with connection.cursor() as cursor:
+            # Ищем только тех, у кого роль TECHNICIAN и аккаунт одобрен (is_approved = 1)
+            cursor.execute("SELECT id, name FROM users WHERE role = 'TECHNICIAN' AND is_approved = 1")
+            return cursor.fetchall()
+    finally:
+        connection.close()

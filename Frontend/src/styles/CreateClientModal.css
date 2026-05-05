@@ -1,0 +1,32 @@
+.create-client-modal {
+  width: 400px;
+}
+
+.create-client-body {
+  padding: 20px;
+}
+
+.create-client-form {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.create-client-label {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 14px;
+  color: #555;
+}
+
+.create-client-input {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.create-client-submit {
+  margin-top: 10px;
+  padding: 10px;
+}

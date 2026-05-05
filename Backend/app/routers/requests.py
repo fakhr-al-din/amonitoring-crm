@@ -1,51 +1,39 @@
-from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 from app.database import get_connection
 from app.schemas import RequestCreate, RequestUpdate, AssignRequest, CommentCreate
 from app.security import get_current_user
+from datetime import datetime
 
 router = APIRouter(prefix="/requests", tags=["Requests"])
 
 @router.post("")
 def create_request(data: RequestCreate, current_user: dict = Depends(get_current_user)):
+    # ПРОЛЕЖА 1: Только Админ и Менеджер могут создавать заявки
+    if current_user["role"] not in ["ADMIN", "MANAGER"]:
+        raise HTTPException(status_code=403, detail="Только Менеджер или Админ могут создавать заявки")
+
     connection = get_connection()
     try:
         with connection.cursor() as cursor:
-            # 1. создаём заявку (Добавлено поле city)
             sql = """
             INSERT INTO requests 
             (client_id, vehicle_id, work_type, visit_type, status, city)
             VALUES (%s, %s, %s, %s, %s, %s)
             """
             cursor.execute(sql, (
-                data.client_id,
-                data.vehicle_id,
-                data.work_type,
-                data.visit_type,
-                "NEW",
-                data.city # <-- Сохраняем город в заявку
+                data.client_id, data.vehicle_id, data.work_type, 
+                data.visit_type, "NEW", data.city
             ))
-
             request_id = cursor.lastrowid
 
-            # Пишем в историю
             cursor.execute(
-                """
-                INSERT INTO request_history
-                (request_id, user_id, action, new_value)
-                VALUES (%s, %s, %s, %s)
-                """,
+                "INSERT INTO request_history (request_id, user_id, action, new_value) VALUES (%s, %s, %s, %s)",
                 (request_id, current_user["id"], "CREATED", "Request created")
             )
 
-            # 2. если это установка — добавляем детали
             if data.work_type == "INSTALLATION" and data.installation:
                 cursor.execute(
-                    """
-                    INSERT INTO installation_details
-                    (request_id, has_beacon, has_blocking)
-                    VALUES (%s, %s, %s)
-                    """,
+                    "INSERT INTO installation_details (request_id, has_beacon, has_blocking) VALUES (%s, %s, %s)",
                     (request_id, data.installation.has_beacon, data.installation.has_blocking)
                 )
 
@@ -56,12 +44,13 @@ def create_request(data: RequestCreate, current_user: dict = Depends(get_current
 
 @router.get("")
 def get_requests(status: str = Query(None), current_user: dict = Depends(get_current_user)):
+    # Читать могут ВСЕ авторизованные пользователи (включая TECHNICIAN)
     connection = get_connection()
     try:
         with connection.cursor() as cursor:
             base_sql = """
             SELECT 
-                r.*,
+                r.id, r.client_id, r.vehicle_id, r.work_type, r.visit_type, r.city, r.status, r.created_at, r.assigned_to, r.is_paid, r.paid_at,
                 c.name AS client_name, c.phone,
                 v.brand, v.model, v.plate_number,
                 i.has_beacon, i.has_blocking
@@ -71,8 +60,7 @@ def get_requests(status: str = Query(None), current_user: dict = Depends(get_cur
             LEFT JOIN installation_details i ON r.id = i.request_id
             """
             if status:
-                base_sql += " WHERE r.status = %s"
-                base_sql += " ORDER BY r.created_at DESC"
+                base_sql += " WHERE r.status = %s ORDER BY r.created_at DESC"
                 cursor.execute(base_sql, (status,))
             else:
                 base_sql += " ORDER BY r.created_at DESC"
@@ -84,25 +72,30 @@ def get_requests(status: str = Query(None), current_user: dict = Depends(get_cur
 @router.patch("/{request_id}")
 def update_request(request_id: int, data: RequestUpdate, current_user: dict = Depends(get_current_user)):
     connection = get_connection()
-
     ALLOWED_TRANSITIONS = {
         "NEW": ["IN_PROGRESS", "CANCELLED"],
-        "IN_PROGRESS": ["DONE", "CANCELLED"],
-        "DONE": []
+        "IN_PROGRESS": ["COMPLETED", "CANCELLED"],
+        "COMPLETED": []
     }
-    ALLOWED_ROLES = ["ADMIN", "SENIOR_TECHNICIAN", "MANAGER", "ACCOUNTANT"]
+    
+    # Обычный TECHNICIAN вообще не имеет права сюда стучаться
+    if current_user["role"] == "TECHNICIAN":
+        raise HTTPException(status_code=403, detail="Обычный монтажник может только просматривать заявки")
 
     try:
         with connection.cursor() as cursor:
-            # 1. Проверка прав
-            if current_user["role"] not in ALLOWED_ROLES:
-                raise HTTPException(status_code=403, detail="Недостаточно прав")
-
-            # 2. Получаем заявку
             cursor.execute("SELECT work_type, status, is_paid FROM requests WHERE id = %s", (request_id,))
             req = cursor.fetchone()
             if not req:
                 raise HTTPException(status_code=404, detail="Заявка не найдена")
+
+            old_status = req["status"]
+
+            # --- ЛОГИКА ГОРОДА ---
+            if data.city is not None:
+                if current_user["role"] not in ["ADMIN", "MANAGER"]:
+                    raise HTTPException(status_code=403, detail="Только Менеджер или Админ могут менять город")
+                cursor.execute("UPDATE requests SET city = %s WHERE id = %s", (data.city, request_id))
 
             # --- ЛОГИКА ОПЛАТЫ ---
             if data.is_paid is not None:
@@ -111,7 +104,7 @@ def update_request(request_id: int, data: RequestUpdate, current_user: dict = De
                     if old_paid != data.is_paid:
                         paid_at_val = datetime.now() if data.is_paid else None
                         cursor.execute(
-                            "UPDATE requests SET is_paid = %s, paid_at = %s WHERE id = %s", 
+                            "UPDATE requests SET is_paid = %s, paid_at = %s WHERE id = %s",
                             (data.is_paid, paid_at_val, request_id)
                         )
                         cursor.execute(
@@ -122,58 +115,52 @@ def update_request(request_id: int, data: RequestUpdate, current_user: dict = De
                     raise HTTPException(status_code=403, detail="Только Бухгалтер или Админ могут менять оплату")
 
             # --- ЛОГИКА СТАТУСА ---
-            if data.status is not None:
-                if current_user["role"] in ["ACCOUNTANT", "TECHNICIAN"]:
+            if data.status is not None and old_status != data.status:
+                # Админ, Менеджер и Старший монтажник могут менять статус
+                if current_user["role"] not in ["ADMIN", "MANAGER", "SENIOR_TECHNICIAN"]:
                     raise HTTPException(status_code=403, detail="Недостаточно прав для изменения статуса")
+                    
+                if current_user["role"] != "ADMIN":
+                    allowed = ALLOWED_TRANSITIONS.get(old_status, [])
+                    if data.status not in allowed:
+                        raise HTTPException(status_code=400, detail=f"Нельзя сменить {old_status} на {data.status}")
                 
-                old_status = req["status"]
-                if old_status != data.status:
-                    # Проверка переходов (кроме админа)
-                    if current_user["role"] != "ADMIN":
-                        allowed = ALLOWED_TRANSITIONS.get(old_status, [])
-                        if data.status not in allowed:
-                            raise HTTPException(status_code=400, detail=f"Нельзя сменить {old_status} на {data.status}")
-
-                    cursor.execute("UPDATE requests SET status = %s WHERE id = %s", (data.status, request_id))
-                    cursor.execute(
-                        "INSERT INTO request_history (request_id, user_id, action, old_value, new_value) VALUES (%s, %s, %s, %s, %s)",
-                        (request_id, current_user["id"], "STATUS_CHANGED", old_status, data.status)
-                    )
+                cursor.execute("UPDATE requests SET status = %s WHERE id = %s", (data.status, request_id))
+                cursor.execute(
+                    "INSERT INTO request_history (request_id, user_id, action, old_value, new_value) VALUES (%s, %s, %s, %s, %s)",
+                    (request_id, current_user["id"], "STATUS_CHANGED", old_status, data.status)
+                )
 
             # --- ЛОГИКА ДЕТАЛЕЙ УСТАНОВКИ ---
-            if data.installation:
-                if current_user["role"] in ["ACCOUNTANT", "TECHNICIAN"]:
-                    raise HTTPException(status_code=403, detail="Недостаточно прав для изменения деталей установки")
+            if data.installation and req["work_type"] == "INSTALLATION":
+                if current_user["role"] not in ["ADMIN", "MANAGER"]:
+                    raise HTTPException(status_code=403, detail="Только Менеджер или Админ могут менять детали установки")
+                
+                cursor.execute("SELECT has_beacon, has_blocking FROM installation_details WHERE request_id = %s", (request_id,))
+                old_install = cursor.fetchone()
+                new_v = f"beacon={int(data.installation.has_beacon)}, blocking={int(data.installation.has_blocking)}"
+                
+                if old_install:
+                    cursor.execute(
+                        "UPDATE installation_details SET has_beacon = %s, has_blocking = %s WHERE request_id = %s",
+                        (data.installation.has_beacon, data.installation.has_blocking, request_id)
+                    )
+                    old_v = f"beacon={old_install['has_beacon']}, blocking={old_install['has_blocking']}"
+                else:
+                    cursor.execute(
+                        "INSERT INTO installation_details (request_id, has_beacon, has_blocking) VALUES (%s, %s, %s)",
+                        (request_id, data.installation.has_beacon, data.installation.has_blocking)
+                    )
+                    old_v = "none"
 
-                if req["work_type"] == "INSTALLATION":
-                    cursor.execute("SELECT has_beacon, has_blocking FROM installation_details WHERE request_id = %s", (request_id,))
-                    old_install = cursor.fetchone()
-                    
-                    new_v = f"beacon={int(data.installation.has_beacon)}, blocking={int(data.installation.has_blocking)}"
-                    
-                    if old_install:
-                        cursor.execute(
-                            "UPDATE installation_details SET has_beacon = %s, has_blocking = %s WHERE request_id = %s",
-                            (data.installation.has_beacon, data.installation.has_blocking, request_id)
-                        )
-                        old_v = f"beacon={old_install['has_beacon']}, blocking={old_install['has_blocking']}"
-                    else:
-                        cursor.execute(
-                            "INSERT INTO installation_details (request_id, has_beacon, has_blocking) VALUES (%s, %s, %s)",
-                            (request_id, data.installation.has_beacon, data.installation.has_blocking)
-                        )
-                        old_v = "none"
+                if old_v != new_v:
+                    cursor.execute(
+                        "INSERT INTO request_history (request_id, user_id, action, old_value, new_value) VALUES (%s, %s, %s, %s, %s)",
+                        (request_id, current_user["id"], "INSTALLATION_UPDATED", old_v, new_v)
+                    )
 
-                    if old_v != new_v:
-                        cursor.execute(
-                            "INSERT INTO request_history (request_id, user_id, action, old_value, new_value) VALUES (%s, %s, %s, %s, %s)",
-                            (request_id, current_user["id"], "INSTALLATION_UPDATED", old_v, new_v)
-                        )
-
-            # Сохраняем ВСЕ изменения разом
             connection.commit()
             return {"message": "Request updated successfully"}
-
     except Exception as e:
         connection.rollback()
         raise e
@@ -182,31 +169,28 @@ def update_request(request_id: int, data: RequestUpdate, current_user: dict = De
 
 @router.post("/{request_id}/assign")
 def assign_request(request_id: int, data: AssignRequest, current_user: dict = Depends(get_current_user)):
+    # ПРОЛЕЖА 2: Только Админ и Старший монтажник могут назначать
     if current_user["role"] not in ["ADMIN", "SENIOR_TECHNICIAN"]:
-        raise HTTPException(status_code=403, detail="Not enough permissions")
+        raise HTTPException(status_code=403, detail="Только Старший монтажник или Админ могут назначать заявки")
     
     connection = get_connection()
     try:
         with connection.cursor() as cursor:
-            # Проверка техника
             cursor.execute("SELECT role FROM users WHERE id = %s", (data.technician_id,))
             tech = cursor.fetchone()
             if not tech or tech["role"] != "TECHNICIAN":
-                raise HTTPException(status_code=400, detail="User is not a technician")
+                raise HTTPException(status_code=400, detail="Назначить можно только обычного монтажника (TECHNICIAN)")
 
-            # Проверка заявки
             cursor.execute("SELECT status, assigned_to FROM requests WHERE id = %s", (request_id,))
             req = cursor.fetchone()
             if not req or req["status"] != "NEW":
-                raise HTTPException(status_code=400, detail="Only NEW requests can be assigned")
+                raise HTTPException(status_code=400, detail="Назначить монтажника можно только на новую заявку")
 
-            # Назначаем
             cursor.execute(
                 "UPDATE requests SET assigned_to = %s, status = 'IN_PROGRESS' WHERE id = %s",
                 (data.technician_id, request_id)
             )
 
-            # Пишем историю
             cursor.execute(
                 "INSERT INTO request_history (request_id, user_id, action, old_value, new_value) VALUES (%s, %s, %s, %s, %s)",
                 (request_id, current_user["id"], "ASSIGNED", f"assigned_to={req['assigned_to']}", f"assigned_to={data.technician_id}")
@@ -219,12 +203,13 @@ def assign_request(request_id: int, data: AssignRequest, current_user: dict = De
 
 @router.get("/{request_id}")
 def get_request_detail(request_id: int, current_user: dict = Depends(get_current_user)):
+    # Читать могут ВСЕ
     connection = get_connection()
     try:
         with connection.cursor() as cursor:
-            # Данные заявки
             sql_request = """
-            SELECT r.*, c.name AS client_name, c.phone, v.brand, v.model, v.plate_number, i.has_beacon, i.has_blocking
+            SELECT r.id, r.client_id, r.vehicle_id, r.work_type, r.visit_type, r.city, r.status, r.created_at, r.assigned_to, r.is_paid, r.paid_at,
+                   c.name AS client_name, c.phone, v.brand, v.model, v.plate_number, i.has_beacon, i.has_blocking
             FROM requests r
             LEFT JOIN clients c ON r.client_id = c.id
             LEFT JOIN vehicles v ON r.vehicle_id = v.id
@@ -236,14 +221,12 @@ def get_request_detail(request_id: int, current_user: dict = Depends(get_current
             if not request_data:
                 raise HTTPException(status_code=404, detail="Request not found")
 
-            # Комментарии
             cursor.execute(
                 "SELECT rc.id, u.name AS author, rc.message, rc.created_at FROM request_comments rc LEFT JOIN users u ON rc.user_id = u.id WHERE rc.request_id = %s ORDER BY rc.created_at ASC",
                 (request_id,)
             )
             comments = cursor.fetchall()
 
-            # История
             cursor.execute(
                 "SELECT h.action, h.old_value, h.new_value, h.created_at, u.name AS user_name FROM request_history h LEFT JOIN users u ON h.user_id = u.id WHERE h.request_id = %s ORDER BY h.created_at ASC",
                 (request_id,)
@@ -256,6 +239,10 @@ def get_request_detail(request_id: int, current_user: dict = Depends(get_current
 
 @router.post("/comments")
 def create_comment(data: CommentCreate, current_user: dict = Depends(get_current_user)):
+    # Если хочешь, чтобы монтажники не могли оставлять комментарии, раскомментируй эту проверку:
+    # if current_user["role"] == "TECHNICIAN":
+    #     raise HTTPException(status_code=403, detail="Обычный монтажник не может оставлять комментарии")
+    
     connection = get_connection()
     try:
         with connection.cursor() as cursor:
