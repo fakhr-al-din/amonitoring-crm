@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import '../styles/Clients.css'; // Подключаем наши вынесенные стили
+import '../styles/Clients.css'; 
 import CreateClientModal from './CreateClientModal';
 import RequestDetailModal from './RequestDetailModal';
 
@@ -8,13 +8,11 @@ export default function Clients() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   
-  // Новые состояния для детального просмотра и модалок
   const [selectedClient, setSelectedClient] = useState(null); 
   const [clientRequests, setClientRequests] = useState([]);
   const [isCreateModalOpen, setCreateModalOpen] = useState(false);
   const [selectedRequestId, setSelectedRequestId] = useState(null);
 
-  // Загружаем клиентов при открытии страницы
   useEffect(() => {
     fetchClients();
   }, []);
@@ -43,7 +41,6 @@ export default function Clients() {
     }
   };
 
-  // Обработчик клика по карточке клиента
   const handleClientClick = async (client) => {
     setSelectedClient(client);
     try {
@@ -71,7 +68,6 @@ export default function Clients() {
   return (
     <div className="clients-page-container">
       
-      {/* ЕСЛИ КЛИЕНТ НЕ ВЫБРАН -> ПОКАЗЫВАЕМ СПИСОК (СЕТКУ) */}
       {!selectedClient ? (
         <>
           <div className="clients-header-bar">
@@ -97,7 +93,12 @@ export default function Clients() {
           ) : (
             <div className="clients-grid">
               {clients.map(client => (
-                <div key={client.id} className="client-card" onClick={() => handleClientClick(client)}>
+                <div 
+                  key={client.id} 
+                  className="client-card" 
+                  /* УБРАЛИ onClick отсюда и добавили обычный курсор */
+                  style={{ cursor: 'default' }}
+                >
                   <div className="client-card-title">
                     {client.company_name || client.name}
                   </div>
@@ -107,12 +108,26 @@ export default function Clients() {
                   <div className="client-card-info">
                     {client.phone} {client.email ? ` · ${client.email}` : ''}
                   </div>
-                  {/* Беджик количества заявок из обновленного бэкенда */}
-                  <div className="client-card-footer">
-                    <span className="request-count-label">Заявок:</span>
-                    <span className={`request-count-badge ${client.request_count > 0 ? 'active' : ''}`}>
-                      {client.request_count || 0}
-                    </span>
+                  
+                  {/* Подвал карточки с бейджиком и НОВОЙ КНОПКОЙ */}
+                  <div className="client-card-footer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '15px' }}>
+                    <div>
+                      <span className="request-count-label">Заявок:</span>
+                      <span className={`request-count-badge ${client.request_count > 0 ? 'active' : ''}`} style={{ marginLeft: '8px' }}>
+                        {client.request_count || 0}
+                      </span>
+                    </div>
+                    
+                    {/* Кнопка "Детали" */}
+                    <button 
+                      className="btn-details"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleClientClick(client);
+                      }}
+                    >
+                      Детали
+                    </button>
                   </div>
                 </div>
               ))}
@@ -120,7 +135,6 @@ export default function Clients() {
           )}
         </>
       ) : (
-        /* ЕСЛИ КЛИЕНТ ВЫБРАН -> ПОКАЗЫВАЕМ ЕГО ДЕТАЛИ И ЗАЯВКИ */
         <div className="client-detail-view">
           <div className="clients-header-bar">
             <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
@@ -135,11 +149,22 @@ export default function Clients() {
             </div>
           </div>
 
-          <div className="client-info-box">
+          {/* Добавили position: 'relative' чтобы кнопка позиционировалась внутри блока */}
+          <div className="client-info-box" style={{ position: 'relative' }}>
+            
+            {/* НОВАЯ КНОПКА "РЕДАКТИРОВАТЬ" В ПРАВОМ ВЕРХНЕМ УГЛУ */}
+            <div style={{ position: 'absolute', top: '20px', right: '20px' }}>
+              <button 
+                className="btn-edit-request"
+                onClick={() => alert('Здесь будет открываться форма редактирования клиента!')}
+              >
+                ✎ Редактировать
+              </button>
+            </div>
+
             <div className="info-row"><span className="info-key">ФИО / Название</span><span className="info-val">{selectedClient.company_name || selectedClient.name}</span></div>
             <div className="info-row"><span className="info-key">Тип</span><span className="info-val">{selectedClient.type}</span></div>
             <div className="info-row"><span className="info-key">Телефон</span><span className="info-val">{selectedClient.phone}</span></div>
-            {/* Берем город из первой заявки клиента, если она есть */}
             <div className="info-row"><span className="info-key">Город</span><span className="info-val">{clientRequests.length > 0 && clientRequests[0].city ? clientRequests[0].city : 'Неизвестно'}</span></div>
           </div>
 
@@ -162,7 +187,6 @@ export default function Clients() {
         </div>
       )}
 
-      {/* МОДАЛКИ */}
       <CreateClientModal 
         isOpen={isCreateModalOpen} 
         onClose={() => setCreateModalOpen(false)} 
@@ -174,7 +198,7 @@ export default function Clients() {
         requestId={selectedRequestId} 
         onClose={() => setSelectedRequestId(null)} 
         onUpdated={() => {
-          if (selectedClient) handleClientClick(selectedClient); // Обновляем список при редактировании
+          if (selectedClient) handleClientClick(selectedClient);
         }} 
       />
     </div>

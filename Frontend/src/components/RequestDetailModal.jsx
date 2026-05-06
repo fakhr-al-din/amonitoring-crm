@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import '../styles/Requests.css';
 
-// --- ДОБАВЬ ФУНКЦИЮ СЮДА ---
 const getUserRole = () => {
   try {
     const token = localStorage.getItem('access_token');
@@ -12,13 +12,11 @@ const getUserRole = () => {
     }).join(''));
     return JSON.parse(jsonPayload).role;
   } catch (error) {
-    console.error("Ошибка декодирования токена:", error);
     return null;
   }
 };
-// ---------------------------
 
-export default function RequestDetailModal({ isOpen, onClose, requestId, onUpdated, initialTab = 'info' }) {
+export default function RequestDetailModal({ isOpen, onClose, requestId, onUpdated, initialTab = 'info', onEditClick }) {
   const [activeTab, setActiveTab] = useState(initialTab); 
   const [request, setRequest] = useState(null);
   const [comments, setComments] = useState([]);
@@ -27,20 +25,23 @@ export default function RequestDetailModal({ isOpen, onClose, requestId, onUpdat
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Получаем роль пользователя
+  const [technicians, setTechnicians] = useState([]);
+  const [selectedTech, setSelectedTech] = useState('');
+
   const userRole = getUserRole();
 
- useEffect(() => {
+  useEffect(() => {
     if (isOpen && requestId) {
-      // Используем переданный initialTab вместо жесткого 'info'
       setActiveTab(initialTab);
       fetchRequestDetails();
       fetchComments();
+      if (userRole === 'ADMIN' || userRole === 'SENIOR_TECHNICIAN') {
+        fetchTechnicians();
+      }
     }
-  }, [isOpen, requestId, initialTab]); // Добавили initialTab в зависимости
+  }, [isOpen, requestId, initialTab]);
 
   const fetchRequestDetails = async () => {
-    // ... (без изменений) ...
     setLoading(true);
     try {
       const token = localStorage.getItem('access_token');
@@ -60,7 +61,6 @@ export default function RequestDetailModal({ isOpen, onClose, requestId, onUpdat
   };
 
   const fetchComments = async () => {
-    // ... (без изменений) ...
     try {
       const token = localStorage.getItem('access_token');
       const res = await fetch(`http://127.0.0.1:8000/requests/${requestId}/comments`, {
@@ -71,21 +71,32 @@ export default function RequestDetailModal({ isOpen, onClose, requestId, onUpdat
         setComments(data);
       }
     } catch (err) {
-      console.error('Ошибка загрузки комментариев', err);
+      console.error(err);
+    }
+  };
+
+  const fetchTechnicians = async () => {
+    try {
+      const token = localStorage.getItem('access_token');
+      const res = await fetch(`http://127.0.0.1:8000/users/technicians`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setTechnicians(data);
+      }
+    } catch (err) {
+      console.error(err);
     }
   };
 
   const handleStatusChange = async (e) => {
-    // ... (без изменений) ...
     const newStatus = e.target.value;
     try {
       const token = localStorage.getItem('access_token');
       const res = await fetch(`http://127.0.0.1:8000/requests/${requestId}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ status: newStatus })
       });
       
@@ -99,16 +110,12 @@ export default function RequestDetailModal({ isOpen, onClose, requestId, onUpdat
   };
 
   const handleAddComment = async () => {
-    // ... (без изменений) ...
     if (!newComment.trim()) return;
     try {
       const token = localStorage.getItem('access_token');
       const res = await fetch(`http://127.0.0.1:8000/requests/${requestId}/comments`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ request_id: requestId, message: newComment })
       });
       if (!res.ok) throw new Error('Не удалось отправить комментарий');
@@ -119,10 +126,33 @@ export default function RequestDetailModal({ isOpen, onClose, requestId, onUpdat
     }
   };
 
+  const handleAssign = async () => {
+    if (!selectedTech) { alert('Выберите монтажника'); return; }
+    try {
+      const token = localStorage.getItem('access_token');
+      const res = await fetch(`http://127.0.0.1:8000/requests/${requestId}/assign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ technician_id: parseInt(selectedTech) })
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.detail || 'Ошибка');
+      }
+
+      alert('Монтажник назначен!');
+      setSelectedTech('');
+      fetchRequestDetails();
+      onUpdated();
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
   if (!isOpen) return null;
 
   const formatDate = (dateString) => {
-    // ... (без изменений) ...
     if (!dateString) return '—';
     const d = new Date(dateString);
     return d.toLocaleDateString('ru-RU') + ' ' + d.toLocaleTimeString('ru-RU', {hour: '2-digit', minute:'2-digit'});
@@ -132,7 +162,6 @@ export default function RequestDetailModal({ isOpen, onClose, requestId, onUpdat
     <div className="modal-overlay open">
       <div className="modal-window custom-detail-window">
         
-        {/* ... (Шапка и Вкладки без изменений) ... */}
         <div className="modal-header">
           <span className="modal-title">Заявка — {request ? request.client_name : 'Загрузка...'}</span>
           <button className="modal-close" onClick={onClose}>&times;</button>
@@ -149,21 +178,17 @@ export default function RequestDetailModal({ isOpen, onClose, requestId, onUpdat
             <>
               {activeTab === 'info' && (
                 <div className="tab-content">
-                  
-                  {/* СКРЫВАЕМ кнопку изменения заявки для TECHNICIAN */}
-                  {userRole !== 'TECHNICIAN' && (
+                  {userRole !== 'TECHNICIAN' && onEditClick && (
                     <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '15px' }}>
                       <button 
-                        className="btn-green" 
-                        style={{ background: '#f1f8e9', color: '#5e9424', border: '1px solid #c8e6c9' }}
-                        onClick={() => alert('Здесь откроется форма редактирования (CreateRequestModal в режиме edit)')}
+                        className="btn-edit-request" 
+                        onClick={() => onEditClick(request)}
                       >
                         ✎ Изменить заявку
                       </button>
                     </div>
                   )}
 
-                  {/* ... (Блоки с информацией: Клиент, Транспорт, Работы - остаются без изменений) ... */}
                   <div className="info-card">
                     <div className="info-card-title">Клиент</div>
                     <div className="info-row"><span className="info-key">ФИО</span><span className="info-val">{request.client_name || '—'}</span></div>
@@ -192,14 +217,11 @@ export default function RequestDetailModal({ isOpen, onClose, requestId, onUpdat
                       <div className="info-row"><span className="info-key">Маяк</span><span className="info-val">{request.has_beacon ? 'С маяком' : 'Без маяка'}</span></div>
                     </div>
                   )}
-
                 </div>
               )}
 
-              {/* ... (Вкладки комментариев и истории остаются без изменений) ... */}
               {activeTab === 'comments' && (
                 <div className="tab-content flex-col">
-                  {/* ... код комментариев ... */}
                    <div className="comments-area">
                     {comments.length === 0 ? <div className="empty-state">Нет комментариев</div> : 
                       comments.map((c, i) => (
@@ -223,7 +245,6 @@ export default function RequestDetailModal({ isOpen, onClose, requestId, onUpdat
 
               {activeTab === 'history' && (
                 <div className="tab-content">
-                  {/* ... код истории ... */}
                    {history.length === 0 ? <div className="empty-state">История пуста</div> : (
                     <div className="history-timeline">
                       {history.map((h, i) => (
@@ -245,11 +266,9 @@ export default function RequestDetailModal({ isOpen, onClose, requestId, onUpdat
           )}
         </div>
 
-        {/* Подвал (Здесь скрываем элементы в зависимости от роли) */}
         {request && (
           <div className="custom-footer">
             
-            {/* Статус могут менять все, КРОМЕ TECHNICIAN */}
             {userRole !== 'TECHNICIAN' ? (
               <div className="footer-group">
                 <span>Статус:</span>
@@ -266,57 +285,32 @@ export default function RequestDetailModal({ isOpen, onClose, requestId, onUpdat
               </div>
             )}
 
-            {/* Назначать монтажника могут только ADMIN и SENIOR_TECHNICIAN */}
-            {(userRole === 'ADMIN' || userRole === 'SENIOR_TECHNICIAN') && (
+            {request.status === 'NEW' && (userRole === 'ADMIN' || userRole === 'SENIOR_TECHNICIAN') ? (
               <div className="footer-group">
                 <span>Монтажник:</span>
-                <select className="footer-select">
+                <select 
+                  className="footer-select" 
+                  value={selectedTech} 
+                  onChange={(e) => setSelectedTech(e.target.value)}
+                >
                   <option value="">— выбрать —</option>
-                  {/* Сюда потом добавим список монтажников */}
+                  {technicians.map(t => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
                 </select>
-                <button className="btn-green">Назначить</button>
+                <button className="btn-green" onClick={handleAssign}>Назначить</button>
               </div>
-            )}
+            ) : request.assigned_to ? (
+              <div className="footer-group">
+                 <span style={{ color: '#5e9424', fontWeight: '500' }}>
+                   ✓ Назначен монтажник (ID: {request.assigned_to})
+                 </span>
+              </div>
+            ) : null}
+
           </div>
         )}
-
       </div>
-
-      {/* ВШИТЫЕ СТИЛИ (Без изменений) */}
-      <style dangerouslySetInnerHTML={{__html: `
-        /* ... (Твои стили остаются здесь без изменений) ... */
-        .custom-detail-window { width: 700px; max-width: 95%; max-height: 90vh; display: flex; flex-direction: column; background: #fcfcfc; border-radius: 8px; overflow: hidden; }
-        .custom-tabs { display: flex; border-bottom: 1px solid #e0e0e0; padding: 0 20px; background: #fff; }
-        .custom-tab { padding: 15px 20px; background: none; border: none; font-size: 14px; color: #888; cursor: pointer; border-bottom: 2px solid transparent; }
-        .custom-tab.active { color: #5e9424; font-weight: bold; border-bottom-color: #5e9424; }
-        .tab-badge { background: #e8f5e9; color: #2e7d32; border-radius: 50%; padding: 2px 6px; font-size: 11px; margin-left: 5px; }
-        .custom-body { flex: 1; overflow-y: auto; padding: 20px; }
-        .info-card { background: #fff; border: 1px solid #eee; border-radius: 6px; padding: 20px; margin-bottom: 15px; box-shadow: 0 1px 3px rgba(0,0,0,0.02); }
-        .info-card-title { color: #5e9424; font-size: 12px; font-weight: 700; text-transform: uppercase; margin-bottom: 15px; letter-spacing: 0.5px; }
-        .info-row { display: flex; margin-bottom: 12px; font-size: 14px; }
-        .info-row:last-child { margin-bottom: 0; }
-        .info-key { width: 160px; color: #888; }
-        .info-val { flex: 1; color: #222; font-weight: 500; }
-        .custom-footer { padding: 15px 20px; background: #fff; border-top: 1px solid #e0e0e0; display: flex; justify-content: space-between; align-items: center; }
-        .footer-group { display: flex; align-items: center; gap: 10px; font-size: 14px; color: #555; }
-        .footer-select { padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; outline: none; }
-        .btn-green { background: #5e9424; color: #fff; border: none; padding: 7px 15px; border-radius: 4px; cursor: pointer; font-weight: 500; }
-        .btn-green:hover { background: #4d7a1d; }
-        .flex-col { display: flex; flex-direction: column; height: 100%; }
-        .comments-area { flex: 1; margin-bottom: 15px; }
-        .comment-bubble { background: #fff; border: 1px solid #eee; padding: 12px; border-radius: 6px; margin-bottom: 10px; }
-        .comment-date { font-size: 12px; color: #aaa; margin-left: 10px; }
-        .comment-input-area { display: flex; flex-direction: column; gap: 10px; }
-        .comment-input-area textarea { border: 1px solid #ccc; border-radius: 6px; padding: 10px; resize: vertical; min-height: 60px; font-family: inherit;}
-        .comment-input-area button { align-self: flex-end; }
-        .history-item { display: flex; gap: 15px; margin-bottom: 20px; }
-        .history-dot { width: 10px; height: 10px; background: #8bc34a; border-radius: 50%; margin-top: 5px; }
-        .history-content { background: #fff; border: 1px solid #eee; padding: 12px 15px; border-radius: 6px; flex: 1; }
-        .history-action { font-weight: 500; font-size: 14px; margin-bottom: 5px; }
-        .history-meta { font-size: 12px; color: #888; }
-        .history-author { color: #5e9424; font-weight: 500; margin-left: 5px; }
-        .empty-state { text-align: center; color: #aaa; padding: 40px 0; }
-      `}} />
     </div>
   );
 }

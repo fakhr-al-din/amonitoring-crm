@@ -27,7 +27,6 @@ export default function Requests() {
   const [selectedRequestId, setSelectedRequestId] = useState(null);
   const [editRequestData, setEditRequestData] = useState(null);
   
-  // НОВОЕ: Состояния для управления меню и вкладками
   const [activeDropdown, setActiveDropdown] = useState(null);
   const [detailModalTab, setDetailModalTab] = useState('info');
 
@@ -38,7 +37,6 @@ export default function Requests() {
     fetchRequests();
   }, []);
 
-  // Закрытие меню при клике в любое место экрана
   useEffect(() => {
     const handleClickOutside = () => setActiveDropdown(null);
     document.addEventListener('click', handleClickOutside);
@@ -69,6 +67,7 @@ export default function Requests() {
     }
     if (filters.status) result = result.filter(r => r.status === filters.status);
     if (filters.format) result = result.filter(r => r.visit_type === filters.format);
+    if (filters.city) result = result.filter(r => r.city === filters.city);
     setFilteredRequests(result);
   }, [filters, requests]);
 
@@ -84,10 +83,8 @@ export default function Requests() {
     return d.toLocaleDateString('ru-RU') + ' ' + d.toLocaleTimeString('ru-RU', {hour: '2-digit', minute:'2-digit'});
   };
 
-  // --- ОБРАБОТЧИКИ ВЫПАДАЮЩЕГО МЕНЮ ---
- const toggleDropdown = (e, reqId) => {
+  const toggleDropdown = (e, reqId) => {
     e.stopPropagation(); 
-    // Используем callback (prev), чтобы React всегда брал самое свежее состояние
     setActiveDropdown(prev => prev === reqId ? null : reqId);
   };
 
@@ -108,21 +105,20 @@ export default function Requests() {
   const handleMenuDownload = (e, reqId) => {
     e.stopPropagation();
     setActiveDropdown(null);
-    alert(`Загрузка заявки №${reqId}... (Эта функция будет реализована позже)`);
+    alert(`Загрузка заявки №${reqId}...`);
   };
 
   const handleMenuHistory = (e, reqId) => {
     e.stopPropagation();
     setActiveDropdown(null);
-    setDetailModalTab('history'); // Указываем, что хотим открыть историю
+    setDetailModalTab('history');
     setSelectedRequestId(reqId);
   };
 
-  // --- ДОБАВЬ ЭТУ ФУНКЦИЮ ---
   const handleOpenEditFromDetail = (reqData) => {
-    setSelectedRequestId(null); // Закрываем модалку с деталями
-    setEditRequestData(reqData); // Передаем данные заявки в форму
-    setCreateModalOpen(true); // Открываем саму форму
+    setSelectedRequestId(null);
+    setEditRequestData(reqData);
+    setCreateModalOpen(true);
   };
 
   return (
@@ -141,13 +137,7 @@ export default function Requests() {
         {filteredRequests.map(req => (
           <div 
             key={req.id} 
-            className="request-card" 
-            onClick={() => { setDetailModalTab('info'); setSelectedRequestId(req.id); }}
-            /* НОВОЕ: Поднимаем активную карточку поверх остальных */
-            style={{ 
-              zIndex: activeDropdown === req.id ? 100 : 1, 
-              position: 'relative' 
-            }}
+            className={`request-card ${activeDropdown === req.id ? 'active-dropdown' : ''}`}
           >
             <div className="card-column">
               <div className="card-item"><span className="card-label">Клиент</span><span className="card-value">{req.client_name || 'Не указано'}</span></div>
@@ -162,43 +152,41 @@ export default function Requests() {
               <div className="card-item"><span className="card-label">Формат</span><span className="card-value">{req.visit_type === 'ON_SITE' ? 'Выезд к клиенту' : 'В офисе'}</span></div>
             </div>
 
-            {/* Обертка для меню и кнопки */}
-            <div className="card-actions-wrapper">
-              <div className="card-actions" onClick={(e) => toggleDropdown(e, req.id)}>
-                &#8942;
-              </div>
+            <div className="card-actions-wrapper" style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+              
+              <button 
+                className="btn-details"
+                onClick={(e) => { 
+                  e.stopPropagation(); 
+                  setDetailModalTab('info'); 
+                  setSelectedRequestId(req.id); 
+                }}
+              >
+                Детали
+              </button>
 
-              {/* Выпадающее меню */}
+              <div className="card-actions" onClick={(e) => toggleDropdown(e, req.id)}>&#8942;</div>
+              
               {activeDropdown === req.id && (
                 <div className="dropdown-menu">
                   <div className="dropdown-item" onClick={(e) => handleMenuOpen(e, req.id)}>
-                    <svg viewBox="0 0 24 24"><path d="M4 4h16v16H4V4zm2 2v12h12V6H6zm2 2h8v2H8V8zm0 4h8v2H8v-2z"/></svg>
-                    Открыть
+                    <svg viewBox="0 0 24 24"><path d="M4 4h16v16H4V4zm2 2v12h12V6H6zm2 2h8v2H8V8zm0 4h8v2H8v-2z"/></svg> Открыть
                   </div>
-                  
-                  {/* Ограничиваем редактирование для монтажников */}
                   {userRole !== 'TECHNICIAN' && (
                     <div className="dropdown-item" onClick={(e) => handleMenuEdit(e, req)}>
-                      <svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
-                      Редактировать
+                      <svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg> Редактировать
                     </div>
                   )}
-                  
                   <div className="dropdown-item" onClick={(e) => handleMenuDownload(e, req.id)}>
-                    <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
-                    Скачать заявку
+                    <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg> Скачать заявку
                   </div>
-                  
                   <div className="dropdown-divider"></div>
-                  
                   <div className="dropdown-item" onClick={(e) => handleMenuHistory(e, req.id)}>
-                    <svg viewBox="0 0 24 24"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>
-                    История изменений
+                    <svg viewBox="0 0 24 24"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg> История изменений
                   </div>
                 </div>
               )}
             </div>
-
           </div>
         ))}
       </div>
@@ -215,14 +203,14 @@ export default function Requests() {
         onClose={() => { setCreateModalOpen(false); setEditRequestData(null); }} 
         onCreated={() => { setCreateModalOpen(false); setEditRequestData(null); fetchRequests(); }} 
       />
-    {/* Найди этот блок и добавь строку onEditClick */}
+      
       <RequestDetailModal 
         isOpen={!!selectedRequestId} 
         requestId={selectedRequestId} 
         initialTab={detailModalTab}
         onClose={() => setSelectedRequestId(null)} 
         onUpdated={() => fetchRequests()} 
-        onEditClick={handleOpenEditFromDetail} // <--- ДОБАВЬ ЭТУ СТРОКУ
+        onEditClick={handleOpenEditFromDetail} 
       />
     </div>
   );

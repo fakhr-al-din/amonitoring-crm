@@ -227,13 +227,22 @@ export default function CreateRequestModal({ isOpen, onClose, onCreated, editReq
             <div className="form-section">
               <h3 className="form-section-title">2. Организация работ</h3>
               
-              <div className="form-row align-center">
-                <span className="field-label req-mark">Город:</span>
-                <select className="form-input" name="city" value={formData.city} onChange={handleChange} disabled={isExisting && !isEditMode}>
-                  <option value="">— город —</option>
-                  <option>Алматы</option><option>Астана</option><option>Шымкент</option><option>Караганда</option>
-                </select>
-              </div>
+             <div className="form-row align-center">
+            <span className="field-label req-mark">Город:</span>
+            
+            <select 
+              className="form-input" 
+              name="city" 
+              value={formData.city} 
+              onChange={handleChange} 
+            >
+              <option value="">— город —</option>
+              <option>Алматы</option>
+              <option>Астана</option>
+              <option>Шымкент</option>
+              <option>Караганда</option>
+            </select>
+          </div>
 
               <div className="form-row align-center">
                 <span className="field-label req-mark">Форма работы</span>
