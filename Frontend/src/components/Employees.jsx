@@ -6,6 +6,30 @@ export default function Employees() {
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [isModalOpen, setIsModalOpen] = useState(false)
+	const [selectedUser, setSelectedUser] = useState(null)
+	const [formData, setFormData] = useState({
+		email: '',
+		name: '',
+		password: '',
+		role: '',
+	})
+
+  const currentUser = JSON.parse(localStorage.getItem('user') || 'null') || {}
+
+  const getUserIdFromToken = () => {
+		const token = localStorage.getItem('access_token')
+		if (!token) return null
+
+		try {
+			const payload = JSON.parse(atob(token.split('.')[1]))
+			return payload.id // ⚠️ важно: проверь как у тебя называется поле (id / user_id)
+		} catch {
+			return null
+		}
+	}
+
+  const currentUserId = getUserIdFromToken()
 
   // 1. Узнаем роль текущего пользователя из токена
   const getUserRoleFromToken = () => {
@@ -46,71 +70,256 @@ export default function Employees() {
     }
   };
 
-  const handleDelete = (id, name) => {
-    if (window.confirm(`Удалить сотрудника ${name}?`)) {
-      alert(`Здесь будет запрос на удаление ID: ${id}`);
-      // Логика удаления (похожая на reject-user)
-    }
-  };
+  const handleDelete = async (id, name) => {
+		if (!window.confirm(`Удалить сотрудника ${name}?`)) return
 
-  const handleEdit = (id) => {
-    alert(`Открытие модалки редактирования для ID: ${id}`);
-  };
+		try {
+			const token = localStorage.getItem('access_token')
+
+			const response = await fetch(`http://localhost:8000/admin/users/${id}`, {
+				method: 'DELETE',
+				headers: {
+					Authorization: `Bearer ${token}`,
+				},
+			})
+
+			if (!response.ok) {
+				const data = await response.json()
+				throw new Error(data.detail || 'Ошибка удаления')
+			}
+
+			// 🔥 обновляем список без перезагрузки
+			setEmployees(prev => prev.filter(emp => emp.id !== id))
+		} catch (err) {
+			alert(err.message)
+		}
+	}
+
+  const handleEdit = emp => {
+		setSelectedUser(emp)
+		setFormData({
+			email: emp.email || '',
+			name: emp.name || '',
+			password: '',
+			role: emp.role || '',
+		})
+		setIsModalOpen(true)
+	}
+
+  const handleChange = e => {
+		const { name, value } = e.target
+		setFormData(prev => ({
+			...prev,
+			[name]: value,
+		}))
+	}
+
+  const handleSave = async () => {
+		try {
+			const token = localStorage.getItem('access_token')
+
+			const body = {
+				email: formData.email,
+				name: formData.name,
+			}
+
+			if (formData.password) {
+				body.password = formData.password
+			}
+
+			// только админ может менять роль
+			if (isAdmin) {
+				body.role = formData.role
+			}
+
+			const response = await fetch(
+				`http://localhost:8000/admin/users/${selectedUser.id}`,
+				{
+					method: 'PUT',
+					headers: {
+						'Content-Type': 'application/json',
+						Authorization: `Bearer ${token}`,
+					},
+					body: JSON.stringify(body),
+				},
+			)
+
+			if (!response.ok) {
+				const data = await response.json()
+				throw new Error(data.detail || 'Ошибка обновления')
+			}
+
+			// обновляем список
+			setEmployees(prev =>
+				prev.map(emp =>
+					emp.id === selectedUser.id ? { ...emp, ...body } : emp,
+				),
+			)
+
+			setIsModalOpen(false)
+		} catch (err) {
+			alert(err.message)
+		}
+	}
+
+  const sortedEmployees = [...employees]
+		.filter(emp => emp.email !== 'admin@amonitoring.kz')
+		.sort((a, b) => {
+			if (a.id === currentUserId) return -1
+			if (b.id === currentUserId) return 1
+			return 0
+		})
 
   // Словари для бейджиков
   const roleLabels = {
     'ADMIN': 'Администратор',
     'MANAGER': 'Менеджер',
     'SENIOR_TECHNICIAN': 'Старший монтажник',
-    'TECHNICIAN': 'Монтажник'
+    'TECHNICIAN': 'Монтажник',
+    'ACCOUNTANT': 'Бухгалтер'
   };
 
   const roleClasses = {
     'ADMIN': 'role-admin',
     'MANAGER': 'role-manager',
     'SENIOR_TECHNICIAN': 'role-senior',
-    'TECHNICIAN': 'role-tech'
+    'TECHNICIAN': 'role-tech',
+    'ACCOUNTANT': 'role-accountant'
   };
-console.log("Компонент Сотрудники успешно открылся!");
+
   return (
-    <div className="employees-page">
-      <div className="employees-header">
-        <h2>Сотрудники</h2>
-        {/* Кнопку "Добавить" тоже прячем от не-админов, если это нужно */}
-        {isAdmin && (
-          <button className="add-emp-btn">+ Добавить сотрудника</button>
-        )}
-      </div>
-      <p className="employees-subtitle">Сотрудники входят с логином и паролем.</p>
+		<div className='employees-page'>
+			<div className='employees-header'>
+				<h2>Сотрудники</h2>
+			</div>
+			<p className='employees-subtitle'>
+				Сотрудники входят с логином и паролем.
+			</p>
 
-      {error && <div style={{ color: 'red', marginBottom: '20px' }}>{error}</div>}
+			{error && (
+				<div style={{ color: 'red', marginBottom: '20px' }}>{error}</div>
+			)}
 
-      {loading ? (
-        <div>Загрузка...</div>
-      ) : (
-        <div className="employees-grid">
-          {employees.map(emp => (
-            <div key={emp.id} className={`emp-card ${emp.role === 'ADMIN' ? 'admin-card' : ''}`}>
-              
-              <div className="emp-name">{emp.name}</div>
-              <div className="emp-email">@{emp.email.split('@')[0]}</div> {/* Показываем почту в виде @username как на скрине */}
-              
-              <div className={`role-badge ${roleClasses[emp.role] || 'role-tech'}`}>
-                {roleLabels[emp.role] || emp.role}
-              </div>
+			{loading ? (
+				<div>Загрузка...</div>
+			) : (
+				<div className='employees-grid'>
+					{sortedEmployees.map(emp => (
+						<div
+							key={emp.id}
+							className={`emp-card ${emp.role === 'ADMIN' ? 'admin-card' : ''}`}
+						>
+							<div className='emp-name'>{emp.name}</div>
+							<div className='emp-email'>@{emp.email.split('@')[0]}</div>{' '}
+							{/* Показываем почту в виде @username как на скрине */}
+							<div
+								className={`role-badge ${roleClasses[emp.role] || 'role-tech'}`}
+							>
+								{roleLabels[emp.role] || emp.role}
+							</div>
+							{/* РЕНДЕРИМ КНОПКИ ТОЛЬКО ДЛЯ АДМИНА */}
+							{(isAdmin || emp.id === currentUserId) && (
+								<div className='emp-actions'>
+									<button className='btn-edit' onClick={() => handleEdit(emp)}>
+										Изменить
+									</button>
 
-              {/* РЕНДЕРИМ КНОПКИ ТОЛЬКО ДЛЯ АДМИНА */}
-              {isAdmin && (
-                <div className="emp-actions">
-                  <button className="btn-edit" onClick={() => handleEdit(emp.id)}>Изменить</button>
-                  <button className="btn-delete" onClick={() => handleDelete(emp.id, emp.name)}>Удалить</button>
-                </div>
-              )}
-              
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+									{isAdmin && (
+										<button
+											className='btn-delete'
+											onClick={() => handleDelete(emp.id, emp.name)}
+										>
+											Удалить
+										</button>
+									)}
+								</div>
+							)}
+						</div>
+					))}
+				</div>
+			)}
+
+			{isModalOpen && (
+				<div className='employee-modal-overlay'>
+					<div className='employee-modal'>
+						<div className='employee-modal-header'>
+							<h2>Редактирование сотрудника</h2>
+							<button
+								className='employee-modal-close'
+								onClick={() => setIsModalOpen(false)}
+							>
+								×
+							</button>
+						</div>
+
+						<div className='employee-modal-body'>
+							<label>
+								Имя
+								<input
+									type='text'
+									name='name'
+									placeholder='Имя'
+									value={formData.name}
+									onChange={handleChange}
+								/>
+							</label>
+
+							<label>
+								Email
+								<input
+									type='email'
+									name='email'
+									placeholder='Email'
+									value={formData.email}
+									onChange={handleChange}
+								/>
+							</label>
+
+							<label>
+								Новый пароль
+								<input
+									type='password'
+									name='password'
+									placeholder='Оставьте пустым, если не нужно менять'
+									value={formData.password}
+									onChange={handleChange}
+								/>
+							</label>
+
+							{isAdmin && (
+								<label>
+									Роль
+									<select
+										name='role'
+										value={formData.role}
+										onChange={handleChange}
+									>
+										{Object.entries(roleLabels).map(
+											([roleValue, roleLabel]) => (
+												<option key={roleValue} value={roleValue}>
+													{roleLabel}
+												</option>
+											),
+										)}
+									</select>
+								</label>
+							)}
+						</div>
+
+						<div className='employee-modal-actions'>
+							<button className='btn-save' onClick={handleSave}>
+								Сохранить
+							</button>
+							<button
+								className='btn-cancel'
+								onClick={() => setIsModalOpen(false)}
+							>
+								Отмена
+							</button>
+						</div>
+					</div>
+				</div>
+			)}
+		</div>
+	)
 }
