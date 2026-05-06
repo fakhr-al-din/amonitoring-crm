@@ -156,16 +156,19 @@ def update_user(
     finally:
         connection.close()
 
-
 @router.get("/users")
-def get_all_users(admin: dict = Depends(get_current_admin)):
+def get_all_users(current_user: dict = Depends(get_current_user)):
+    """Список одобренных сотрудников для всех авторизованных пользователей"""
     connection = get_connection()
     try:
         with connection.cursor() as cursor:
-            # Используем 1 вместо TRUE (в MySQL так надежнее)
-            cursor.execute("SELECT id, name, email, role FROM users WHERE is_approved = 1")
+            cursor.execute("""
+                SELECT id, name, email, role
+                FROM users
+                WHERE is_approved = 1
+            """)
             users = cursor.fetchall()
-            
+
             return users
     finally:
         connection.close()

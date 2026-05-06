@@ -15,37 +15,28 @@ export default function Employees() {
 		role: '',
 	})
 
-  const currentUser = JSON.parse(localStorage.getItem('user') || 'null') || {}
+  const currentUser = JSON.parse(localStorage.getItem('user_data') || 'null') || {}
 
-  const getUserIdFromToken = () => {
+  const getTokenPayload = () => {
 		const token = localStorage.getItem('access_token')
-		if (!token) return null
+		if (!token) return {}
 
 		try {
-			const payload = JSON.parse(atob(token.split('.')[1]))
-			return payload.id // ⚠️ важно: проверь как у тебя называется поле (id / user_id)
+			return JSON.parse(atob(token.split('.')[1]))
 		} catch {
-			return null
+			return {}
 		}
 	}
 
-  const currentUserId = getUserIdFromToken()
+	const tokenPayload = getTokenPayload()
 
-  // 1. Узнаем роль текущего пользователя из токена
-  const getUserRoleFromToken = () => {
-    const token = localStorage.getItem('access_token');
-    if (!token) return null;
-    try {
-      // Декодируем JWT токен (его среднюю часть)
-      const payload = JSON.parse(atob(token.split('.')[1]));
-      return payload.role; // Возвращает 'ADMIN', 'MANAGER' и т.д.
-    } catch (e) {
-      return null;
-    }
-  };
+	const currentUserId = Number(tokenPayload.sub)
+	const currentUserRole = tokenPayload.role || null
+	const isAdmin = currentUserRole === 'ADMIN'
 
-  const currentUserRole = getUserRoleFromToken();
-  const isAdmin = currentUserRole === 'ADMIN';
+	const isCurrentUser = emp => {
+		return Number(emp.id) === currentUserId
+	}
 
   useEffect(() => {
     fetchEmployees();
@@ -165,8 +156,8 @@ export default function Employees() {
   const sortedEmployees = [...employees]
 		.filter(emp => emp.email !== 'admin@amonitoring.kz')
 		.sort((a, b) => {
-			if (a.id === currentUserId) return -1
-			if (b.id === currentUserId) return 1
+			if (isCurrentUser(a)) return -1
+			if (isCurrentUser(b)) return 1
 			return 0
 		})
 
@@ -218,7 +209,7 @@ export default function Employees() {
 								{roleLabels[emp.role] || emp.role}
 							</div>
 							{/* РЕНДЕРИМ КНОПКИ ТОЛЬКО ДЛЯ АДМИНА */}
-							{(isAdmin || emp.id === currentUserId) && (
+							{(isAdmin || isCurrentUser(emp)) && (
 								<div className='emp-actions'>
 									<button className='btn-edit' onClick={() => handleEdit(emp)}>
 										Изменить
