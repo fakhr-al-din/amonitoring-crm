@@ -160,7 +160,7 @@ export default function RequestDetailModal({ isOpen, onClose, requestId, onUpdat
 
   return (
     <div className="modal-overlay open">
-      <div className="modal-window custom-detail-window">
+      <div className="custom-detail-window">
         
         <div className="modal-header">
           <span className="modal-title">Заявка — {request ? request.client_name : 'Загрузка...'}</span>

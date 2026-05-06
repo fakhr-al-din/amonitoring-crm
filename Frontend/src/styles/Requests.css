@@ -227,7 +227,7 @@
   max-height: 90vh; 
   display: flex; 
   flex-direction: column; 
-  background: #a31a1a; 
+  background: #fcfcfc; 
   border-radius: 8px; 
   overflow: hidden; 
 }
