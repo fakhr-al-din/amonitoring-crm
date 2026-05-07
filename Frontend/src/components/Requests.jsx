@@ -14,7 +14,6 @@ const getUserRole = () => {
     }).join(''));
     return JSON.parse(jsonPayload).role;
   } catch (error) {
-    console.error("Ошибка декодирования токена:", error);
     return null;
   }
 };
@@ -22,11 +21,11 @@ const getUserRole = () => {
 export default function Requests() {
   const [requests, setRequests] = useState([]);
   const [filteredRequests, setFilteredRequests] = useState([]);
+  const [technicians, setTechnicians] = useState([]); 
   
   const [isCreateModalOpen, setCreateModalOpen] = useState(false);
   const [selectedRequestId, setSelectedRequestId] = useState(null);
   const [editRequestData, setEditRequestData] = useState(null);
-  
   const [activeDropdown, setActiveDropdown] = useState(null);
   const [detailModalTab, setDetailModalTab] = useState('info');
 
@@ -35,6 +34,7 @@ export default function Requests() {
 
   useEffect(() => {
     fetchRequests();
+    fetchTechnicians();
   }, []);
 
   useEffect(() => {
@@ -59,6 +59,22 @@ export default function Requests() {
     }
   };
 
+  const fetchTechnicians = async () => {
+    try {
+      const token = localStorage.getItem('access_token');
+      const res = await fetch('http://127.0.0.1:8000/users/technicians', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) setTechnicians(await res.json());
+    } catch (err) { console.error(err); }
+  };
+
+  const getTechName = (techId) => {
+    if (!techId) return null;
+    const tech = technicians.find(t => t.id === techId);
+    return tech ? tech.name : `ID: ${techId}`;
+  };
+
   useEffect(() => {
     let result = requests;
     if (filters.client) {
@@ -74,8 +90,8 @@ export default function Requests() {
   const handleFilterChange = (e) => setFilters({ ...filters, [e.target.name]: e.target.value });
   const resetFilters = () => setFilters({ client: '', status: '', city: '', autoType: '', format: '', dateFrom: '', dateTo: '' });
 
-  const statusLabels = { 'NEW': 'В ожидании', 'IN_PROGRESS': 'В процессе установки', 'DONE': 'Работы завершены', 'CANCELLED': 'Отменено' };
-  const statusClasses = { 'NEW': 'status-new', 'IN_PROGRESS': 'status-progress', 'DONE': 'status-done', 'CANCELLED': 'status-cancelled' };
+  const statusLabels = { 'NEW': 'В ожидании', 'IN_PROGRESS': 'В процессе установки', 'DONE': 'Работы завершены', 'CANCELLED': 'Отменено', 'COMPLETED': 'Работы завершены' };
+  const statusClasses = { 'NEW': 'status-new', 'IN_PROGRESS': 'status-progress', 'DONE': 'status-done', 'COMPLETED': 'status-done', 'CANCELLED': 'status-cancelled' };
 
   const formatDate = (dateString) => {
     if (!dateString) return '—';
@@ -125,8 +141,8 @@ export default function Requests() {
     <div className="requests-page-container">
       <div className="filters-bar">
         <div className="filter-group"><label>Клиент</label><input className="filter-input" type="text" name="client" value={filters.client} onChange={handleFilterChange} /></div>
-        <div className="filter-group"><label>Статус</label><select className="filter-select" name="status" value={filters.status} onChange={handleFilterChange}><option value="">Все статусы</option><option value="NEW">В ожидании</option><option value="IN_PROGRESS">В процессе установки</option><option value="DONE">Работы завершены</option></select></div>
-        <div className="filter-group"><label>Город</label><select className="filter-select" name="city" value={filters.city} onChange={handleFilterChange}><option value="">Все города</option><option value="Алматы">Алматы</option><option value="Астана">Астана</option></select></div>
+        <div className="filter-group"><label>Статус</label><select className="filter-select" name="status" value={filters.status} onChange={handleFilterChange}><option value="">Все статусы</option><option value="NEW">В ожидании</option><option value="IN_PROGRESS">В процессе установки</option><option value="COMPLETED">Работы завершены</option></select></div>
+        <div className="filter-group"><label>Город</label><select className="filter-select" name="city" value={filters.city} onChange={handleFilterChange}><option value="">Все города</option><option value="Алматы">Алматы</option><option value="Астана">Астана</option><option value="Шымкент">Шымкент</option></select></div>
         <div className="filter-group"><label>Формат работы</label><select className="filter-select" name="format" value={filters.format} onChange={handleFilterChange}><option value="">Все форматы</option><option value="ON_SITE">Выезд к клиенту</option><option value="IN_OFFICE">В офисе</option></select></div>
         <button className="btn-reset" onClick={resetFilters}>Сбросить</button>
       </div>
@@ -135,36 +151,43 @@ export default function Requests() {
         {filteredRequests.length === 0 ? <div style={{textAlign: 'center', color: '#888'}}>Заявки не найдены</div> : null}
         
         {filteredRequests.map(req => (
-          <div 
-            key={req.id} 
-            className={`request-card ${activeDropdown === req.id ? 'active-dropdown' : ''}`}
-          >
+          <div key={req.id} className="request-card" style={{ zIndex: activeDropdown === req.id ? 100 : 1, position: 'relative', cursor: 'default' }}>
+            
             <div className="card-column">
               <div className="card-item"><span className="card-label">Клиент</span><span className="card-value">{req.client_name || 'Не указано'}</span></div>
               <div className="card-item"><span className="card-label">Статус</span><div className={`status-badge ${statusClasses[req.status] || 'status-new'}`}>{statusLabels[req.status] || req.status}</div></div>
+              {req.assigned_to && (
+                <div className="card-item" style={{ marginTop: '5px' }}>
+                  <span className="card-label">Исполнитель</span>
+                  <span className="card-value" style={{ fontWeight: '600', color: '#5e9424', fontSize: '13px' }}>{getTechName(req.assigned_to)}</span>
+                </div>
+              )}
             </div>
+
             <div className="card-column">
-              <div className="card-item"><span className="card-label">Авто</span><span className="card-value">{req.brand} {req.model}</span></div>
+              <div className="card-item"><span className="card-label">Авто</span><span className="card-value">{req.brand} {req.model} <span style={{color: '#888', fontSize: '12px'}}>({req.plate_number || 'б/н'})</span></span></div>
               <div className="card-item"><span className="card-label">Город</span><span className="card-value">{req.city || 'Не указан'}</span></div>
             </div>
+
             <div className="card-column">
-              <div className="card-item"><span className="card-label">Дата</span><span className="card-value">{formatDate(req.created_at)}</span></div>
+              <div className="card-item">
+                <span className="card-label">Оборудование</span>
+                <span className="card-value" style={{fontSize: '13px'}}>
+                  {req.work_type === 'INSTALLATION' 
+                    ? `${req.has_blocking ? 'Блок.' : 'Без блок.'} • ${req.has_beacon ? 'Маяк' : 'Без маяка'}`
+                    : <span style={{ color: '#aaa' }}>—</span>}
+                </span>
+              </div>
               <div className="card-item"><span className="card-label">Формат</span><span className="card-value">{req.visit_type === 'ON_SITE' ? 'Выезд к клиенту' : 'В офисе'}</span></div>
             </div>
 
-            <div className="card-actions-wrapper" style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-              
-              <button 
-                className="btn-details"
-                onClick={(e) => { 
-                  e.stopPropagation(); 
-                  setDetailModalTab('info'); 
-                  setSelectedRequestId(req.id); 
-                }}
-              >
-                Детали
-              </button>
+            <div className="card-column">
+              <div className="card-item"><span className="card-label">Дата</span><span className="card-value">{formatDate(req.created_at)}</span></div>
+              <div className="card-item"><span className="card-label">Оплата</span><div className={`status-badge ${req.is_paid ? 'status-progress' : 'status-new'}`} style={{padding: '2px 10px', fontSize: '11px', marginTop: '2px'}}>{req.is_paid ? 'Оплачено' : 'Ожидает оплаты'}</div></div>
+            </div>
 
+            <div className="card-actions-wrapper" style={{ display: 'flex', alignItems: 'center', gap: '10px', position: 'absolute', top: '15px', right: '15px' }}>
+              <button className="btn-details" onClick={(e) => { e.stopPropagation(); setDetailModalTab('info'); setSelectedRequestId(req.id); }}>Детали</button>
               <div className="card-actions" onClick={(e) => toggleDropdown(e, req.id)}>&#8942;</div>
               
               {activeDropdown === req.id && (
@@ -187,6 +210,7 @@ export default function Requests() {
                 </div>
               )}
             </div>
+
           </div>
         ))}
       </div>

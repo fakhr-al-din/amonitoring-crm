@@ -11,9 +11,7 @@ const getUserRole = () => {
         return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
     }).join(''));
     return JSON.parse(jsonPayload).role;
-  } catch (error) {
-    return null;
-  }
+  } catch (error) { return null; }
 };
 
 export default function RequestDetailModal({ isOpen, onClose, requestId, onUpdated, initialTab = 'info', onEditClick }) {
@@ -22,13 +20,28 @@ export default function RequestDetailModal({ isOpen, onClose, requestId, onUpdat
   const [comments, setComments] = useState([]);
   const [history, setHistory] = useState([]);
   const [newComment, setNewComment] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-
   const [technicians, setTechnicians] = useState([]);
   const [selectedTech, setSelectedTech] = useState('');
-
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  
   const userRole = getUserRole();
+
+  // --- Закрытие модалки по клавише ESC ---
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    if (isOpen) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, onClose]);
+  // ---------------------------------------
 
   useEffect(() => {
     if (isOpen && requestId) {
@@ -70,9 +83,7 @@ export default function RequestDetailModal({ isOpen, onClose, requestId, onUpdat
         const data = await res.json();
         setComments(data);
       }
-    } catch (err) {
-      console.error(err);
-    }
+    } catch (err) { console.error(err); }
   };
 
   const fetchTechnicians = async () => {
@@ -85,9 +96,7 @@ export default function RequestDetailModal({ isOpen, onClose, requestId, onUpdat
         const data = await res.json();
         setTechnicians(data);
       }
-    } catch (err) {
-      console.error(err);
-    }
+    } catch (err) { console.error(err); }
   };
 
   const handleStatusChange = async (e) => {
@@ -99,14 +108,27 @@ export default function RequestDetailModal({ isOpen, onClose, requestId, onUpdat
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ status: newStatus })
       });
-      
       if (!res.ok) throw new Error('Не удалось обновить статус');
       setRequest({ ...request, status: newStatus });
       fetchRequestDetails(); 
       onUpdated(); 
-    } catch (err) {
-      alert(err.message);
-    }
+    } catch (err) { alert(err.message); }
+  };
+
+  const handlePaymentChange = async (e) => {
+    const newIsPaid = e.target.value === 'true';
+    try {
+      const token = localStorage.getItem('access_token');
+      const res = await fetch(`http://127.0.0.1:8000/requests/${requestId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ is_paid: newIsPaid })
+      });
+      if (!res.ok) throw new Error('Не удалось обновить статус оплаты');
+      setRequest({ ...request, is_paid: newIsPaid });
+      fetchRequestDetails(); 
+      onUpdated(); 
+    } catch (err) { alert(err.message); }
   };
 
   const handleAddComment = async () => {
@@ -121,9 +143,7 @@ export default function RequestDetailModal({ isOpen, onClose, requestId, onUpdat
       if (!res.ok) throw new Error('Не удалось отправить комментарий');
       setNewComment('');
       fetchComments(); 
-    } catch (err) {
-      alert(err.message);
-    }
+    } catch (err) { alert(err.message); }
   };
 
   const handleAssign = async () => {
@@ -135,19 +155,34 @@ export default function RequestDetailModal({ isOpen, onClose, requestId, onUpdat
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ technician_id: parseInt(selectedTech) })
       });
-
-      if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.detail || 'Ошибка');
-      }
-
-      alert('Монтажник назначен!');
+      if (!res.ok) throw new Error('Ошибка при назначении');
+      alert(request.assigned_to ? 'Монтажник успешно заменен!' : 'Монтажник назначен!');
       setSelectedTech('');
       fetchRequestDetails();
       onUpdated();
-    } catch (err) {
-      alert(err.message);
+    } catch (err) { alert(err.message); }
+  };
+
+  const getTechName = (val) => {
+    if (!val || val === 'null' || val === 'None' || val === 'undefined') return 'Не назначен';
+    const id = parseInt(val, 10);
+    if (isNaN(id)) return val;
+    const tech = technicians.find(t => t.id === id);
+    return tech ? tech.name : `Сотрудник ID: ${id}`;
+  };
+
+  const renderHistoryMessage = (h) => {
+    if (h.action === 'CREATED') return 'Заявка создана';
+    if (h.action === 'STATUS_CHANGED') return `Статус изменен: ${h.old_value || '—'} → ${h.new_value}`;
+    if (h.action === 'PAYMENT_CHANGED') return `Статус оплаты: ${h.new_value === 'true' ? 'Оплачено' : 'Ожидает оплаты'}`;
+    
+    if (h.action === 'ASSIGNED' || h.action === 'TECHNICIAN_ASSIGNED' || h.action === 'TECHNICIAN_CHANGED') {
+      if (h.old_value && h.old_value !== 'null' && h.old_value !== 'None') {
+        return `Монтажник изменен: ${getTechName(h.old_value)} → ${getTechName(h.new_value)}`;
+      }
+      return `Назначен монтажник: ${getTechName(h.new_value)}`;
     }
+    return h.action;
   };
 
   if (!isOpen) return null;
@@ -159,8 +194,8 @@ export default function RequestDetailModal({ isOpen, onClose, requestId, onUpdat
   };
 
   return (
-    <div className="modal-overlay open">
-      <div className="custom-detail-window">
+    <div className="modal-overlay open" onClick={onClose}>
+      <div className="modal-window custom-detail-window" onClick={(e) => e.stopPropagation()}>
         
         <div className="modal-header">
           <span className="modal-title">Заявка — {request ? request.client_name : 'Загрузка...'}</span>
@@ -180,12 +215,7 @@ export default function RequestDetailModal({ isOpen, onClose, requestId, onUpdat
                 <div className="tab-content">
                   {userRole !== 'TECHNICIAN' && onEditClick && (
                     <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '15px' }}>
-                      <button 
-                        className="btn-edit-request" 
-                        onClick={() => onEditClick(request)}
-                      >
-                        ✎ Изменить заявку
-                      </button>
+                      <button className="btn-edit-request" onClick={() => onEditClick(request)}>✎ Изменить заявку</button>
                     </div>
                   )}
 
@@ -233,11 +263,7 @@ export default function RequestDetailModal({ isOpen, onClose, requestId, onUpdat
                     }
                   </div>
                   <div className="comment-input-area">
-                    <textarea 
-                      placeholder="Написать комментарий..." 
-                      value={newComment} 
-                      onChange={(e) => setNewComment(e.target.value)}
-                    ></textarea>
+                    <textarea placeholder="Написать комментарий..." value={newComment} onChange={(e) => setNewComment(e.target.value)}></textarea>
                     <button className="btn-green" onClick={handleAddComment}>Отправить</button>
                   </div>
                 </div>
@@ -251,10 +277,8 @@ export default function RequestDetailModal({ isOpen, onClose, requestId, onUpdat
                         <div key={i} className="history-item">
                           <div className="history-dot"></div>
                           <div className="history-content">
-                            <div className="history-action">{h.action === 'CREATED' ? 'Заявка создана' : h.action === 'STATUS_CHANGED' ? `Статус изменен: ${h.old_value} → ${h.new_value}` : h.action}</div>
-                            <div className="history-meta">
-                              {formatDate(h.created_at)} <span className="history-author">{h.user_name || 'Система'}</span>
-                            </div>
+                            <div className="history-action">{renderHistoryMessage(h)}</div>
+                            <div className="history-meta">{formatDate(h.created_at)} <span className="history-author">{h.user_name || 'Система'}</span></div>
                           </div>
                         </div>
                       ))}
@@ -267,46 +291,72 @@ export default function RequestDetailModal({ isOpen, onClose, requestId, onUpdat
         </div>
 
         {request && (
-          <div className="custom-footer">
+          <div className="custom-footer" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '15px' }}>
             
-            {userRole !== 'TECHNICIAN' ? (
-              <div className="footer-group">
-                <span>Статус:</span>
-                <select className="footer-select" value={request.status || 'NEW'} onChange={handleStatusChange}>
-                  <option value="NEW">В ожидании</option>
-                  <option value="IN_PROGRESS">В процессе установки</option>
-                  <option value="COMPLETED">Работы завершены</option>
-                  <option value="CANCELLED">Отмена заявки</option>
-                </select>
-              </div>
-            ) : (
-              <div className="footer-group">
-                <span>Статус: <strong>{request.status === 'NEW' ? 'В ожидании' : request.status === 'IN_PROGRESS' ? 'В процессе установки' : request.status === 'COMPLETED' ? 'Завершено' : 'Отменено'}</strong></span>
-              </div>
-            )}
+            <div style={{ display: 'flex', gap: '20px', alignItems: 'center', flexWrap: 'wrap' }}>
+              {userRole !== 'TECHNICIAN' ? (
+                <div className="footer-group">
+                  <span style={{ fontSize: '13px' }}>Статус:</span>
+                  <select className="footer-select" style={{ padding: '4px 8px', fontSize: '13px' }} value={request.status || 'NEW'} onChange={handleStatusChange}>
+                    <option value="NEW">В ожидании</option>
+                    <option value="IN_PROGRESS">В процессе установки</option>
+                    <option value="COMPLETED">Работы завершены</option>
+                    <option value="CANCELLED">Отмена заявки</option>
+                  </select>
+                </div>
+              ) : (
+                <div className="footer-group">
+                  <span style={{ fontSize: '13px' }}>Статус: <strong>{request.status === 'NEW' ? 'В ожидании' : request.status === 'IN_PROGRESS' ? 'В процессе установки' : request.status === 'COMPLETED' ? 'Завершено' : 'Отменено'}</strong></span>
+                </div>
+              )}
 
-            {request.status === 'NEW' && (userRole === 'ADMIN' || userRole === 'SENIOR_TECHNICIAN') ? (
-              <div className="footer-group">
-                <span>Монтажник:</span>
-                <select 
-                  className="footer-select" 
-                  value={selectedTech} 
-                  onChange={(e) => setSelectedTech(e.target.value)}
-                >
-                  <option value="">— выбрать —</option>
-                  {technicians.map(t => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
-                  ))}
-                </select>
-                <button className="btn-green" onClick={handleAssign}>Назначить</button>
-              </div>
-            ) : request.assigned_to ? (
-              <div className="footer-group">
-                 <span style={{ color: '#5e9424', fontWeight: '500' }}>
-                   ✓ Назначен монтажник (ID: {request.assigned_to})
-                 </span>
-              </div>
-            ) : null}
+              {userRole === 'ADMIN' || userRole === 'ACCOUNTANT' ? (
+                <div className="footer-group">
+                  <span style={{ fontSize: '13px' }}>Оплата:</span>
+                  <select className="footer-select" style={{ padding: '4px 8px', fontSize: '13px' }} value={request.is_paid ? 'true' : 'false'} onChange={handlePaymentChange}>
+                    <option value="false">Ожидает оплаты</option>
+                    <option value="true">Оплачено</option>
+                  </select>
+                </div>
+              ) : (
+                <div className="footer-group">
+                  <span style={{ fontSize: '13px' }}>Оплата: <strong>{request.is_paid ? 'Оплачено' : 'Ожидает оплаты'}</strong></span>
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-start', width: '100%' }}>
+              {(userRole === 'ADMIN' || userRole === 'SENIOR_TECHNICIAN') && request.status !== 'COMPLETED' && request.status !== 'CANCELLED' ? (
+                <div className="footer-group">
+                  <span style={{ fontSize: '13px' }}>Монтажник:</span>
+                  <select 
+                    className="footer-select" 
+                    style={{ padding: '4px 8px', fontSize: '13px', maxWidth: '160px' }} 
+                    value={selectedTech} 
+                    onChange={(e) => setSelectedTech(e.target.value)}
+                  >
+                    <option value="">— не назначен —</option>
+                    {technicians.map(t => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+                  <button 
+                    className="btn-green" 
+                    style={{ padding: '5px 12px', fontSize: '13px' }} 
+                    onClick={handleAssign}
+                    disabled={!selectedTech && !request.assigned_to}
+                  >
+                    {request.assigned_to ? 'Изменить' : 'Назначить'}
+                  </button>
+                </div>
+              ) : request.assigned_to ? (
+                <div className="footer-group">
+                   <span style={{ color: '#5e9424', fontWeight: '500', fontSize: '13px' }}>
+                     ✓ Назначен: {getTechName(request.assigned_to)}
+                   </span>
+                </div>
+              ) : null}
+            </div>
 
           </div>
         )}
