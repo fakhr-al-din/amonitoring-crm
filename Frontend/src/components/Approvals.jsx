@@ -1,142 +1,172 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react'
+import '../styles/Approvals.css'
 
 export default function Approvals() {
-  const [pendingUsers, setPendingUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+	const [pendingUsers, setPendingUsers] = useState([])
+	const [loading, setLoading] = useState(true)
+	const [error, setError] = useState('')
 
-  // Загружаем список при открытии страницы
-  useEffect(() => {
-    fetchPendingUsers();
-  }, []);
+	const roleLabels = {
+		ADMIN: 'Администратор',
+		MANAGER: 'Менеджер',
+		SENIOR_TECHNICIAN: 'Старший монтажник',
+		TECHNICIAN: 'Монтажник',
+		ACCOUNTANT: 'Бухгалтер',
+	}
 
-  const fetchPendingUsers = async () => {
-    try {
-      const token = localStorage.getItem('access_token');
-      const response = await fetch('http://127.0.0.1:8000/admin/pending-users', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
+	useEffect(() => {
+		fetchPendingUsers()
+	}, [])
 
-      if (!response.ok) {
-        throw new Error('Не удалось загрузить список заявок на регистрацию');
-      }
+	const fetchPendingUsers = async () => {
+		setLoading(true)
+		setError('')
 
-      const data = await response.json();
-      setPendingUsers(data);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+		try {
+			const token = localStorage.getItem('access_token')
 
-  // Функция одобрения пользователя
-  const handleApprove = async (userId) => {
-    try {
-      const token = localStorage.getItem('access_token');
-      const response = await fetch(`http://127.0.0.1:8000/admin/approve-user/${userId}`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
+			const response = await fetch(
+				'http://127.0.0.1:8000/admin/pending-users',
+				{
+					headers: {
+						Authorization: `Bearer ${token}`,
+					},
+				},
+			)
 
-      if (!response.ok) {
-        throw new Error('Ошибка при одобрении');
-      }
+			if (!response.ok) {
+				throw new Error('Не удалось загрузить список заявок на регистрацию')
+			}
 
-      // Если успешно — удаляем пользователя из списка на экране
-      setPendingUsers(pendingUsers.filter(user => user.id !== userId));
-      alert('Сотрудник успешно одобрен!');
-      
-    } catch (err) {
-      alert(err.message);
-    }
-  };
+			const data = await response.json()
+			setPendingUsers(data)
+		} catch (err) {
+			setError(err.message)
+		} finally {
+			setLoading(false)
+		}
+	}
 
-  // Помощник для перевода ролей на русский
-  const translateRole = (role) => {
-    const roles = {
-      'ADMIN': 'Администратор',
-      'MANAGER': 'Менеджер',
-      'SENIOR_TECHNICIAN': 'Старший техник',
-      'TECHNICIAN': 'Техник'
-    };
-    return roles[role] || role;
-  };
+	const handleApprove = async userId => {
+		try {
+			const token = localStorage.getItem('access_token')
 
-  return (
-    <div className="section-inner employees-inner" style={{ padding: '20px' }}>
-      <h2 className="section-title">Одобрение сотрудников</h2>
-      <p className="emp-hint">Пользователи, зарегистрировавшиеся самостоятельно и ожидающие одобрения.</p>
+			const response = await fetch(
+				`http://127.0.0.1:8000/admin/approve-user/${userId}`,
+				{
+					method: 'POST',
+					headers: {
+						Authorization: `Bearer ${token}`,
+					},
+				},
+			)
 
-      {loading ? (
-        <div style={{ padding: '20px', color: '#888' }}>Загрузка...</div>
-      ) : error ? (
-        <div style={{ padding: '20px', color: '#c53030' }}>{error}</div>
-      ) : pendingUsers.length === 0 ? (
-        <div className="dash-empty visible" style={{ display: 'block' }}>
-          Нет заявок на регистрацию
-        </div>
-      ) : (
-        <div className="approval-list">
-          {pendingUsers.map(user => (
-            <div key={user.id} className="approval-card">
-              <div className="approval-info">
-                <div className="approval-name">{user.name}</div>
-                <div className="approval-meta">
-                  {user.email} · {user.created_at || 'Дата не указана'}
-                </div>
-                <span className="emp-role-badge">
-                  {translateRole(user.role)}
-                </span>
-              </div>
-             <div className="approval-actions" style={{ display: 'flex', gap: '10px' }}>
-                <button 
-                  className="approve-btn" 
-                  onClick={() => handleApprove(user.id)}
-                  style={{ background: '#5e9424', color: 'white', padding: '8px 15px', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-                >
-                  ✓ Одобрить
-                </button>
-                <button 
-                  className="reject-btn" 
-                  onClick={() => handleReject(user.id)}
-                  style={{ background: '#ffebee', color: '#c62828', padding: '8px 15px', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-                >
-                  ✕ Отклонить
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-    
-  );
-  const handleReject = async (userId) => {
-    if (!window.confirm('Вы уверены, что хотите отклонить и удалить этого сотрудника?')) return;
-    
-    try {
-      const token = localStorage.getItem('access_token');
-      const response = await fetch(`http://127.0.0.1:8000/admin/reject-user/${userId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
+			if (!response.ok) {
+				throw new Error('Ошибка при одобрении сотрудника')
+			}
 
-      if (!response.ok) {
-        throw new Error('Ошибка при отклонении');
-      }
+			setPendingUsers(prev => prev.filter(user => user.id !== userId))
+		} catch (err) {
+			alert(err.message)
+		}
+	}
 
-      setPendingUsers(pendingUsers.filter(user => user.id !== userId));
-      alert('Заявка сотрудника отклонена и удалена.');
-      
-    } catch (err) {
-      alert(err.message);
-    }
-  };
+	const handleReject = async userId => {
+		const confirmed = window.confirm(
+			'Вы уверены, что хотите отклонить и удалить этого сотрудника?',
+		)
+
+		if (!confirmed) return
+
+		try {
+			const token = localStorage.getItem('access_token')
+
+			const response = await fetch(
+				`http://127.0.0.1:8000/admin/reject-user/${userId}`,
+				{
+					method: 'DELETE',
+					headers: {
+						Authorization: `Bearer ${token}`,
+					},
+				},
+			)
+
+			if (!response.ok) {
+				throw new Error('Ошибка при отклонении заявки')
+			}
+
+			setPendingUsers(prev => prev.filter(user => user.id !== userId))
+		} catch (err) {
+			alert(err.message)
+		}
+	}
+
+	const formatDate = date => {
+		if (!date) return 'Дата не указана'
+
+		try {
+			return new Date(date).toLocaleDateString('ru-RU', {
+				day: '2-digit',
+				month: '2-digit',
+				year: 'numeric',
+			})
+		} catch {
+			return date
+		}
+	}
+
+	return (
+		<div className='approvals-container'>
+			<div className='approvals-header'>
+				<h2>Одобрение сотрудников</h2>
+				<p>
+					Пользователи, зарегистрировавшиеся самостоятельно и ожидающие
+					одобрения.
+				</p>
+			</div>
+
+			{loading ? (
+				<div className='approvals-loading'>Загрузка...</div>
+			) : error ? (
+				<div className='approvals-error'>{error}</div>
+			) : pendingUsers.length === 0 ? (
+				<div className='empty-approvals'>Нет заявок на регистрацию</div>
+			) : (
+				<div className='approvals-grid'>
+					{pendingUsers.map(user => (
+						<div key={user.id} className='approval-card'>
+							<div className='approval-info'>
+								<div className='approval-name'>{user.name || 'Без имени'}</div>
+								<div className='approval-email'>{user.email}</div>
+
+								<div className='approval-role'>
+									{roleLabels[user.role] || user.role}
+								</div>
+
+								<div className='approval-date'>
+									Зарегистрирован: {formatDate(user.created_at)}
+								</div>
+							</div>
+
+							<div className='approval-actions'>
+								<button
+									className='btn-approve'
+									onClick={() => handleApprove(user.id)}
+								>
+									Одобрить
+								</button>
+
+								<button
+									className='btn-reject'
+									onClick={() => handleReject(user.id)}
+								>
+									Отклонить
+								</button>
+							</div>
+						</div>
+					))}
+				</div>
+			)}
+		</div>
+	)
 }
