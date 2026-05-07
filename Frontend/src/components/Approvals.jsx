@@ -14,6 +14,14 @@ export default function Approvals() {
 		ACCOUNTANT: 'Бухгалтер',
 	}
 
+  const roleClasses = {
+		ADMIN: 'role-admin',
+		MANAGER: 'role-manager',
+		SENIOR_TECHNICIAN: 'role-senior',
+		TECHNICIAN: 'role-tech',
+		ACCOUNTANT: 'role-accountant',
+	}
+
 	useEffect(() => {
 		fetchPendingUsers()
 	}, [])
@@ -139,7 +147,7 @@ export default function Approvals() {
 								<div className='approval-name'>{user.name || 'Без имени'}</div>
 								<div className='approval-email'>{user.email}</div>
 
-								<div className='approval-role'>
+								<div className={`approval-role role-badge ${roleClasses[user.role] || 'role-tech'}`}>
 									{roleLabels[user.role] || user.role}
 								</div>
 

@@ -1,84 +1,104 @@
 .approvals-container {
-  padding: 24px;
+  padding: 20px;
+  background-color: #fff;
   min-height: 100vh;
-  background: #f5f7fb;
 }
 
 .approvals-header {
-  margin-bottom: 24px;
+  margin-bottom: 25px;
 }
 
 .approvals-header h2 {
+  color: #2e5902;
   margin: 0;
-  font-size: 28px;
-  font-weight: 700;
-  color: #111827;
+  font-size: 24px;
 }
 
 .approvals-header p {
-  margin: 6px 0 0;
-  color: #6b7280;
-  font-size: 15px;
+  color: #a0a0a0;
+  font-size: 13px;
+  font-style: italic;
+  margin: 5px 0 0;
 }
 
 .approvals-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 18px;
+  gap: 20px;
 }
 
 .approval-card {
-  background: #ffffff;
-  border-radius: 18px;
+  border: 1px solid #eaeaea;
+  border-radius: 8px;
   padding: 20px;
-  border: 1px solid #e5e7eb;
-  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.05);
+  background: #fff;
   display: flex;
   flex-direction: column;
-  min-height: 210px;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-
-.approval-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 16px 35px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 2px 5px rgba(0,0,0,0.02);
+  min-height: 190px;
 }
 
 .approval-info {
-  flex: 1;
-  margin-bottom: 18px;
+  margin-bottom: 20px;
 }
 
 .approval-name {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
-  color: #111827;
-  margin-bottom: 6px;
+  color: #222;
+  margin-bottom: 5px;
 }
 
 .approval-email {
-  font-size: 14px;
-  color: #6b7280;
-  margin-bottom: 12px;
+  font-size: 13px;
+  color: #888;
+  margin-bottom: 15px;
   word-break: break-word;
 }
 
 .approval-role {
-  display: inline-flex;
-  align-items: center;
-  width: fit-content;
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: #eff6ff;
-  color: #1d4ed8;
-  font-size: 12px;
-  font-weight: 700;
+  margin-bottom: 14px;
 }
 
 .approval-date {
-  margin-top: 12px;
-  font-size: 13px;
-  color: #9ca3af;
+  font-size: 12px;
+  color: #a0a0a0;
+  margin-top: 2px;
+}
+
+/* Бейджи ролей — как в Employees.css */
+.role-badge {
+  display: inline-block;
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  width: fit-content;
+}
+
+.role-admin {
+  background: #f0f4c3;
+  color: #558b2f;
+}
+
+.role-manager {
+  background: #e3f2fd;
+  color: #1565c0;
+}
+
+.role-senior {
+  background: #fff3e0;
+  color: #e65100;
+}
+
+.role-tech {
+  background: #f5f5f5;
+  color: #616161;
+}
+
+.role-accountant {
+  background: #f3e5f5;
+  color: #7b1fa2;
 }
 
 .approval-actions {
@@ -90,59 +110,51 @@
 .btn-approve,
 .btn-reject {
   flex: 1;
-  height: 42px;
+  padding: 8px;
   border: none;
-  border-radius: 12px;
-  font-size: 14px;
-  font-weight: 700;
+  border-radius: 4px;
+  font-weight: 500;
   cursor: pointer;
-  transition: background 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
+  font-size: 13px;
+  transition: background 0.2s;
 }
 
 .btn-approve {
-  background: #5e9424;
-  color: #ffffff;
-  box-shadow: 0 8px 18px rgba(94, 148, 36, 0.2);
+  background: #f1f8e9;
+  color: #558b2f;
 }
 
 .btn-approve:hover {
-  background: #4f7f1e;
-  transform: translateY(-1px);
+  background: #dcedc8;
 }
 
 .btn-reject {
-  background: #fff1f2;
-  color: #be123c;
-  border: 1px solid #fecdd3;
+  background: #ffebee;
+  color: #c62828;
 }
 
 .btn-reject:hover {
-  background: #ffe4e6;
-  transform: translateY(-1px);
+  background: #ffcdd2;
 }
 
 .empty-approvals {
-  background: #ffffff;
-  border: 1px dashed #d1d5db;
-  border-radius: 18px;
-  padding: 50px 24px;
   text-align: center;
-  color: #6b7280;
-  font-size: 15px;
-  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.04);
+  padding: 50px;
+  color: #888;
+  background: #fff;
+  border-radius: 8px;
+  border: 1px dashed #ccc;
 }
 
 .approvals-error {
-  margin-bottom: 18px;
-  padding: 12px 14px;
-  border-radius: 12px;
-  background: #fef2f2;
-  color: #b91c1c;
-  font-size: 14px;
-  font-weight: 600;
+  padding: 20px;
+  color: #c62828;
+  background: #ffebee;
+  border-radius: 8px;
+  margin-bottom: 20px;
 }
 
 .approvals-loading {
   padding: 20px;
-  color: #6b7280;
+  color: #888;
 }
