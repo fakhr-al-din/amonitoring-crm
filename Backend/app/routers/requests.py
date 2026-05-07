@@ -44,13 +44,14 @@ def create_request(data: RequestCreate, current_user: dict = Depends(get_current
 
 @router.get("")
 def get_requests(status: str = Query(None), current_user: dict = Depends(get_current_user)):
-    # Читать могут ВСЕ авторизованные пользователи (включая TECHNICIAN)
+    # Читать могут ВСЕ авторизованные пользователи
     connection = get_connection()
     try:
         with connection.cursor() as cursor:
             base_sql = """
             SELECT 
-                r.id, r.client_id, r.vehicle_id, r.work_type, r.visit_type, r.city, r.status, r.created_at, r.assigned_to, r.is_paid, r.paid_at,
+                r.id, r.client_id, r.vehicle_id, r.work_type, r.visit_type, r.city, r.status, 
+                r.created_at, r.assigned_to, r.is_paid, r.paid_at,
                 c.name AS client_name, c.phone,
                 v.brand, v.model, v.plate_number,
                 i.has_beacon, i.has_blocking
@@ -58,14 +59,75 @@ def get_requests(status: str = Query(None), current_user: dict = Depends(get_cur
             LEFT JOIN clients c ON r.client_id = c.id
             LEFT JOIN vehicles v ON r.vehicle_id = v.id
             LEFT JOIN installation_details i ON r.id = i.request_id
+            WHERE r.is_deleted = 0
             """
             if status:
-                base_sql += " WHERE r.status = %s ORDER BY r.created_at DESC"
+                base_sql += " AND r.status = %s ORDER BY r.created_at DESC"
                 cursor.execute(base_sql, (status,))
             else:
                 base_sql += " ORDER BY r.created_at DESC"
                 cursor.execute(base_sql)
             return cursor.fetchall()
+    finally:
+        connection.close()
+
+@router.get("/deleted")
+def get_deleted_requests(current_user: dict = Depends(get_current_user)):
+    """Список удалённых заявок. Только ADMIN."""
+    if current_user["role"] != "ADMIN":
+        raise HTTPException(status_code=403, detail="Только Админ может просматривать корзину заявок")
+
+    connection = get_connection()
+    try:
+        with connection.cursor() as cursor:
+            sql = """
+            SELECT 
+                r.id, r.client_id, r.vehicle_id, r.work_type, r.visit_type, r.city, 
+                r.status, r.created_at, r.assigned_to, r.is_paid, r.paid_at,
+                r.deleted_at, r.deleted_by,
+                c.name AS client_name, c.phone,
+                v.brand, v.model, v.plate_number,
+                u.name AS deleted_by_name
+            FROM requests r
+            LEFT JOIN clients c ON r.client_id = c.id
+            LEFT JOIN vehicles v ON r.vehicle_id = v.id
+            LEFT JOIN users u ON r.deleted_by = u.id
+            WHERE r.is_deleted = 1
+            ORDER BY r.deleted_at DESC
+            """
+            cursor.execute(sql)
+            return cursor.fetchall()
+    finally:
+        connection.close()
+
+@router.post("/comments")
+def create_comment(data: CommentCreate, current_user: dict = Depends(get_current_user)):
+    # Если хочешь, чтобы монтажники не могли оставлять комментарии, раскомментируй эту проверку:
+    # if current_user["role"] == "TECHNICIAN":
+    #     raise HTTPException(status_code=403, detail="Обычный монтажник не может оставлять комментарии")
+    
+    connection = get_connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id
+                FROM requests
+                WHERE id = %s AND is_deleted = 0
+                """,
+                (data.request_id,)
+            )
+            request = cursor.fetchone()
+
+            if not request:
+                raise HTTPException(status_code=404, detail="Заявка не найдена или удалена")
+            
+            cursor.execute(
+                "INSERT INTO request_comments (request_id, user_id, message) VALUES (%s, %s, %s)",
+                (data.request_id, current_user["id"], data.message)
+            )
+            connection.commit()
+        return {"message": "comment added"}
     finally:
         connection.close()
 
@@ -84,7 +146,14 @@ def update_request(request_id: int, data: RequestUpdate, current_user: dict = De
 
     try:
         with connection.cursor() as cursor:
-            cursor.execute("SELECT work_type, status, is_paid FROM requests WHERE id = %s", (request_id,))
+            cursor.execute(
+                """
+                SELECT work_type, status, is_paid
+                FROM requests
+                WHERE id = %s AND is_deleted = 0
+                """,
+                (request_id,)
+            )
             req = cursor.fetchone()
             if not req:
                 raise HTTPException(status_code=404, detail="Заявка не найдена")
@@ -167,6 +236,138 @@ def update_request(request_id: int, data: RequestUpdate, current_user: dict = De
     finally:
         connection.close()
 
+@router.delete("/{request_id}")
+def delete_request(request_id: int, current_user: dict = Depends(get_current_user)):
+    """Soft delete заявки. Только ADMIN."""
+    if current_user["role"] != "ADMIN":
+        raise HTTPException(status_code=403, detail="Только Админ может удалять заявки")
+
+    connection = get_connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, status, is_deleted
+                FROM requests
+                WHERE id = %s
+                """,
+                (request_id,)
+            )
+            request = cursor.fetchone()
+
+            if not request:
+                raise HTTPException(status_code=404, detail="Заявка не найдена")
+
+            if request["is_deleted"]:
+                raise HTTPException(status_code=400, detail="Заявка уже удалена")
+
+            cursor.execute(
+                """
+                UPDATE requests
+                SET is_deleted = 1,
+                    deleted_at = NOW(),
+                    deleted_by = %s
+                WHERE id = %s
+                """,
+                (current_user["id"], request_id)
+            )
+
+            cursor.execute(
+                """
+                INSERT INTO request_history 
+                (request_id, user_id, action, old_value, new_value)
+                VALUES (%s, %s, %s, %s, %s)
+                """,
+                (
+                    request_id,
+                    current_user["id"],
+                    "REQUEST_DELETED",
+                    f"status={request['status']}",
+                    "is_deleted=1"
+                )
+            )
+
+            connection.commit()
+
+            return {
+                "message": "Заявка перемещена в корзину",
+                "request_id": request_id
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        connection.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        connection.close()
+
+@router.patch("/{request_id}/restore")
+def restore_request(request_id: int, current_user: dict = Depends(get_current_user)):
+    """Восстановление заявки из корзины. Только ADMIN."""
+    if current_user["role"] != "ADMIN":
+        raise HTTPException(status_code=403, detail="Только Админ может восстанавливать заявки")
+
+    connection = get_connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, status, is_deleted
+                FROM requests
+                WHERE id = %s
+                """,
+                (request_id,)
+            )
+            request = cursor.fetchone()
+
+            if not request:
+                raise HTTPException(status_code=404, detail="Заявка не найдена")
+
+            if not request["is_deleted"]:
+                raise HTTPException(status_code=400, detail="Заявка не находится в корзине")
+
+            cursor.execute(
+                """
+                UPDATE requests
+                SET is_deleted = 0,
+                    deleted_at = NULL,
+                    deleted_by = NULL
+                WHERE id = %s
+                """,
+                (request_id,)
+            )
+
+            cursor.execute(
+                """
+                INSERT INTO request_history 
+                (request_id, user_id, action, old_value, new_value)
+                VALUES (%s, %s, %s, %s, %s)
+                """,
+                (
+                    request_id,
+                    current_user["id"],
+                    "REQUEST_RESTORED",
+                    "is_deleted=1",
+                    "is_deleted=0"
+                )
+            )
+
+            connection.commit()
+
+            return {
+                "message": "Заявка восстановлена",
+                "request_id": request_id
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        connection.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        connection.close()
+
 @router.post("/{request_id}/assign")
 def assign_request(request_id: int, data: AssignRequest, current_user: dict = Depends(get_current_user)):
     # ПРОЛЕЖА 2: Только Админ и Старший монтажник могут назначать
@@ -181,7 +382,14 @@ def assign_request(request_id: int, data: AssignRequest, current_user: dict = De
             if not tech or tech["role"] != "TECHNICIAN":
                 raise HTTPException(status_code=400, detail="Назначить можно только обычного монтажника (TECHNICIAN)")
 
-            cursor.execute("SELECT status, assigned_to FROM requests WHERE id = %s", (request_id,))
+            cursor.execute(
+                """
+                SELECT status, assigned_to
+                FROM requests
+                WHERE id = %s AND is_deleted = 0
+                """,
+                (request_id,)
+            )
             req = cursor.fetchone()
             if not req or req["status"] != "NEW":
                 raise HTTPException(status_code=400, detail="Назначить монтажника можно только на новую заявку")
@@ -208,13 +416,16 @@ def get_request_detail(request_id: int, current_user: dict = Depends(get_current
     try:
         with connection.cursor() as cursor:
             sql_request = """
-            SELECT r.id, r.client_id, r.vehicle_id, r.work_type, r.visit_type, r.city, r.status, r.created_at, r.assigned_to, r.is_paid, r.paid_at,
-                   c.name AS client_name, c.phone, v.brand, v.model, v.plate_number, i.has_beacon, i.has_blocking
+            SELECT r.id, r.client_id, r.vehicle_id, r.work_type, r.visit_type, r.city, 
+                r.status, r.created_at, r.assigned_to, r.is_paid, r.paid_at,
+                c.name AS client_name, c.phone, 
+                v.brand, v.model, v.plate_number, 
+                i.has_beacon, i.has_blocking
             FROM requests r
             LEFT JOIN clients c ON r.client_id = c.id
             LEFT JOIN vehicles v ON r.vehicle_id = v.id
             LEFT JOIN installation_details i ON r.id = i.request_id
-            WHERE r.id = %s
+            WHERE r.id = %s AND r.is_deleted = 0
             """
             cursor.execute(sql_request, (request_id,))
             request_data = cursor.fetchone()
@@ -234,24 +445,6 @@ def get_request_detail(request_id: int, current_user: dict = Depends(get_current
             history = cursor.fetchall()
 
             return {"request": request_data, "comments": comments, "history": history}
-    finally:
-        connection.close()
-
-@router.post("/comments")
-def create_comment(data: CommentCreate, current_user: dict = Depends(get_current_user)):
-    # Если хочешь, чтобы монтажники не могли оставлять комментарии, раскомментируй эту проверку:
-    # if current_user["role"] == "TECHNICIAN":
-    #     raise HTTPException(status_code=403, detail="Обычный монтажник не может оставлять комментарии")
-    
-    connection = get_connection()
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "INSERT INTO request_comments (request_id, user_id, message) VALUES (%s, %s, %s)",
-                (data.request_id, current_user["id"], data.message)
-            )
-            connection.commit()
-        return {"message": "comment added"}
     finally:
         connection.close()
 
