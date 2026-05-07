@@ -27,7 +27,10 @@ def sync_db():
                         company_name VARCHAR(255),
                         phone VARCHAR(50) NOT NULL,
                         email VARCHAR(255),
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        is_deleted TINYINT DEFAULT 0,
+                        deleted_at DATETIME NULL,
+                        deleted_by INT NULL
                     );
                 """,
                 "vehicles": """

@@ -5,6 +5,24 @@ from app.security import get_current_user
 
 router = APIRouter(prefix="/clients", tags=["Clients"])
 
+@router.get("")
+def get_clients(current_user: dict = Depends(get_current_user)):
+    connection = get_connection()
+    try:
+        with connection.cursor() as cursor:
+            sql = """
+            SELECT c.*, COUNT(r.id) as request_count 
+            FROM clients c 
+            LEFT JOIN requests r ON c.id = r.client_id 
+            WHERE c.is_deleted = 0
+            GROUP BY c.id 
+            ORDER BY c.created_at DESC
+            """
+            cursor.execute(sql)
+            return cursor.fetchall()
+    finally:
+        connection.close()
+
 @router.post("")
 def create_client(data: ClientCreate, current_user: dict = Depends(get_current_user)):
     # Только Админ и Менеджер могут создавать базу клиентов
@@ -25,21 +43,161 @@ def create_client(data: ClientCreate, current_user: dict = Depends(get_current_u
     finally:
         connection.close()
 
-@router.get("")
-def get_clients(current_user: dict = Depends(get_current_user)):
+@router.get("/deleted")
+def get_deleted_clients(current_user: dict = Depends(get_current_user)):
+    """Список удалённых клиентов. Только ADMIN."""
+    if current_user["role"] != "ADMIN":
+        raise HTTPException(status_code=403, detail="Только Админ может просматривать корзину клиентов")
+
     connection = get_connection()
     try:
         with connection.cursor() as cursor:
-            # Получаем клиентов + количество их заявок
             sql = """
-            SELECT c.*, COUNT(r.id) as request_count 
-            FROM clients c 
-            LEFT JOIN requests r ON c.id = r.client_id 
-            GROUP BY c.id 
-            ORDER BY c.created_at DESC
+            SELECT 
+                c.id,
+                c.type,
+                c.name,
+                c.company_name,
+                c.phone,
+                c.email,
+                c.created_at,
+                c.deleted_at,
+                c.deleted_by,
+                u.name AS deleted_by_name,
+                COUNT(r.id) AS request_count
+            FROM clients c
+            LEFT JOIN users u ON c.deleted_by = u.id
+            LEFT JOIN requests r ON c.id = r.client_id
+            WHERE c.is_deleted = 1
+            GROUP BY 
+                c.id, c.type, c.name, c.company_name, c.phone, c.email,
+                c.created_at, c.deleted_at, c.deleted_by, u.name
+            ORDER BY c.deleted_at DESC
             """
             cursor.execute(sql)
             return cursor.fetchall()
+    finally:
+        connection.close()
+
+@router.delete("/{client_id}")
+def delete_client(client_id: int, current_user: dict = Depends(get_current_user)):
+    """Soft delete клиента. Только ADMIN."""
+    if current_user["role"] != "ADMIN":
+        raise HTTPException(status_code=403, detail="Только Админ может удалять клиентов")
+
+    connection = get_connection()
+    try:
+        with connection.cursor() as cursor:
+            # Проверяем, существует ли клиент
+            cursor.execute(
+                """
+                SELECT id, name, is_deleted
+                FROM clients
+                WHERE id = %s
+                """,
+                (client_id,)
+            )
+            client = cursor.fetchone()
+
+            if not client:
+                raise HTTPException(status_code=404, detail="Клиент не найден")
+
+            if client["is_deleted"]:
+                raise HTTPException(status_code=400, detail="Клиент уже удалён")
+
+            # Проверяем активные заявки клиента
+            cursor.execute(
+                """
+                SELECT COUNT(*) AS active_count
+                FROM requests
+                WHERE client_id = %s
+                AND status IN ('NEW', 'IN_PROGRESS')
+                """,
+                (client_id,)
+            )
+            result = cursor.fetchone()
+
+            if result["active_count"] > 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Нельзя удалить клиента: у него есть активные заявки"
+                )
+
+            # Soft delete
+            cursor.execute(
+                """
+                UPDATE clients
+                SET is_deleted = 1,
+                    deleted_at = NOW(),
+                    deleted_by = %s
+                WHERE id = %s
+                """,
+                (current_user["id"], client_id)
+            )
+
+            connection.commit()
+
+            return {
+                "message": "Клиент перемещён в корзину",
+                "client_id": client_id
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        connection.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        connection.close()
+
+@router.patch("/{client_id}/restore")
+def restore_client(client_id: int, current_user: dict = Depends(get_current_user)):
+    """Восстановление клиента из корзины. Только ADMIN."""
+    if current_user["role"] != "ADMIN":
+        raise HTTPException(status_code=403, detail="Только Админ может восстанавливать клиентов")
+
+    connection = get_connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, name, is_deleted
+                FROM clients
+                WHERE id = %s
+                """,
+                (client_id,)
+            )
+            client = cursor.fetchone()
+
+            if not client:
+                raise HTTPException(status_code=404, detail="Клиент не найден")
+
+            if not client["is_deleted"]:
+                raise HTTPException(status_code=400, detail="Клиент не находится в корзине")
+
+            cursor.execute(
+                """
+                UPDATE clients
+                SET is_deleted = 0,
+                    deleted_at = NULL,
+                    deleted_by = NULL
+                WHERE id = %s
+                """,
+                (client_id,)
+            )
+
+            connection.commit()
+
+            return {
+                "message": "Клиент восстановлен",
+                "client_id": client_id
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        connection.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
         connection.close()
 
@@ -60,3 +218,4 @@ def get_client_requests(client_id: int, current_user: dict = Depends(get_current
             return cursor.fetchall()
     finally:
         connection.close()
+
