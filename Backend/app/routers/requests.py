@@ -120,7 +120,7 @@ def update_request(request_id: int, data: RequestUpdate, current_user: dict = De
                 if current_user["role"] not in ["ADMIN", "MANAGER", "SENIOR_TECHNICIAN"]:
                     raise HTTPException(status_code=403, detail="Недостаточно прав для изменения статуса")
                     
-                if current_user["role"] != "ADMIN":
+                if current_user["role"] not in ["ADMIN", "MANAGER"]:
                     allowed = ALLOWED_TRANSITIONS.get(old_status, [])
                     if data.status not in allowed:
                         raise HTTPException(status_code=400, detail=f"Нельзя сменить {old_status} на {data.status}")
