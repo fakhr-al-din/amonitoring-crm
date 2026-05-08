@@ -391,8 +391,6 @@ def assign_request(request_id: int, data: AssignRequest, current_user: dict = De
                 (request_id,)
             )
             req = cursor.fetchone()
-            if not req or req["status"] != "NEW":
-                raise HTTPException(status_code=400, detail="Назначить монтажника можно только на новую заявку")
 
             cursor.execute(
                 "UPDATE requests SET assigned_to = %s, status = 'IN_PROGRESS' WHERE id = %s",

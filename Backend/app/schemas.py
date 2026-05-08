@@ -35,6 +35,13 @@ class ClientCreate(BaseModel):
     phone: str
     email: str | None = None
 
+class ClientUpdate(BaseModel):
+    type: Optional[str] = None
+    name: Optional[str] = None
+    company_name: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+
 class VehicleCreate(BaseModel):
     client_id: int
     brand: str       # <-- УБЕДИСЬ ЧТО ТУТ ЕСТЬ BRAND
@@ -43,6 +50,14 @@ class VehicleCreate(BaseModel):
     vin: str | None = None
     year: int | None = None
     type: str | None = None
+
+class VehicleUpdate(BaseModel):
+    brand: Optional[str] = None
+    model: Optional[str] = None
+    plate_number: Optional[str] = None
+    vin: Optional[str] = None
+    year: Optional[int] = None
+    type: Optional[str] = None
 
 class UserCreate(BaseModel):
     email: str

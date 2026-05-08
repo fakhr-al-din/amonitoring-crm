@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends
 from app.database import get_connection
-from app.schemas import ClientCreate
+from app.schemas import ClientCreate, ClientUpdate
 from app.security import get_current_user
 
 router = APIRouter(prefix="/clients", tags=["Clients"])
@@ -76,6 +76,77 @@ def get_deleted_clients(current_user: dict = Depends(get_current_user)):
             """
             cursor.execute(sql)
             return cursor.fetchall()
+    finally:
+        connection.close()
+
+@router.patch("/{client_id}")
+def update_client(
+    client_id: int,
+    data: ClientUpdate,
+    current_user: dict = Depends(get_current_user)
+):
+    """Редактирование клиента. Только ADMIN и MANAGER."""
+    if current_user["role"] not in ["ADMIN", "MANAGER"]:
+        raise HTTPException(status_code=403, detail="Только Менеджер или Админ могут редактировать клиентов")
+
+    connection = get_connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, is_deleted
+                FROM clients
+                WHERE id = %s
+                """,
+                (client_id,)
+            )
+            client = cursor.fetchone()
+
+            if not client:
+                raise HTTPException(status_code=404, detail="Клиент не найден")
+
+            if client["is_deleted"]:
+                raise HTTPException(status_code=400, detail="Нельзя редактировать клиента из корзины")
+
+            update_data = data.dict(exclude_unset=True)
+
+            if not update_data:
+                return {"message": "Нет данных для обновления"}
+
+            allowed_fields = ["type", "name", "company_name", "phone", "email"]
+
+            updates = []
+            values = []
+
+            for field in allowed_fields:
+                if field in update_data:
+                    updates.append(f"{field} = %s")
+                    values.append(update_data[field])
+
+            if not updates:
+                return {"message": "Нет допустимых полей для обновления"}
+
+            values.append(client_id)
+
+            sql = f"""
+            UPDATE clients
+            SET {', '.join(updates)}
+            WHERE id = %s
+            """
+
+            cursor.execute(sql, tuple(values))
+            connection.commit()
+
+            return {
+                "message": "Клиент обновлён",
+                "client_id": client_id
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        connection.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
         connection.close()
 
