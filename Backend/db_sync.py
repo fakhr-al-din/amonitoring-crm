@@ -72,6 +72,15 @@ def sync_db():
                         FOREIGN KEY (assigned_to) REFERENCES users(id)
                     );
                 """,
+                "installation_details": """
+                    CREATE TABLE installation_details (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        request_id INT NOT NULL UNIQUE,
+                        has_beacon TINYINT(1) DEFAULT 0,
+                        has_blocking TINYINT(1) DEFAULT 0,
+                        FOREIGN KEY (request_id) REFERENCES requests(id) ON DELETE CASCADE
+                    );
+                """,
                 "request_comments": """
                     CREATE TABLE request_comments (
                         id INT AUTO_INCREMENT PRIMARY KEY,
