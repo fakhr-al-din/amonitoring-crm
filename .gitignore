@@ -1,7 +1,5 @@
 # Python
-Backend/venv/
-Backend/__pycache__/
-*.pyc
+venv/
 .env
 
 # Node / React
@@ -17,10 +15,10 @@ Thumbs.db
 .data/
 
 # Игнорируем все папки кэша питона в любом месте проекта
-**/__pycache__/
-**/*.pyc
-**/*.pyo
-**/*.pyd
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
 
 # Игнорируем локальные настройки VS Code (у каждого они свои)
 .vscode/
