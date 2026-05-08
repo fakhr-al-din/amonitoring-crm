@@ -27,7 +27,10 @@ def sync_db():
                         company_name VARCHAR(255),
                         phone VARCHAR(50) NOT NULL,
                         email VARCHAR(255),
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        is_deleted TINYINT DEFAULT 0,
+                        deleted_at DATETIME NULL,
+                        deleted_by INT NULL
                     );
                 """,
                 "vehicles": """
@@ -58,6 +61,9 @@ def sync_db():
                         assigned_to INT NULL,
                         is_paid BOOLEAN DEFAULT FALSE,
                         paid_at DATETIME NULL,
+                        is_deleted TINYINT DEFAULT 0,
+                        deleted_at DATETIME NULL,
+                        deleted_by INT NULL,
                         FOREIGN KEY (client_id) REFERENCES clients(id),
                         FOREIGN KEY (vehicle_id) REFERENCES vehicles(id),
                         FOREIGN KEY (assigned_to) REFERENCES users(id)
