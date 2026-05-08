@@ -43,6 +43,9 @@ def sync_db():
                         vin VARCHAR(100) UNIQUE,
                         year INT,
                         type VARCHAR(50),
+                        is_deleted TINYINT DEFAULT 0,
+                        deleted_at DATETIME NULL,
+                        deleted_by INT NULL,
                         FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
                     );
                 """,
