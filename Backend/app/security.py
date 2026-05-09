@@ -2,14 +2,14 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from passlib.context import CryptContext
 from datetime import datetime, timedelta, timezone
+from app.config import secret_key, access_token_expire_minutes
 from jose import JWTError, jwt
 from typing import Optional
 from app.database import get_connection
 
-# Настройки (в будущем вынесем в .env файл)
-SECRET_KEY = "PKJDapwoodkAPWDK" # Смени на случайную строку
+SECRET_KEY = secret_key
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 480 # 8 часов
+ACCESS_TOKEN_EXPIRE_MINUTES = access_token_expire_minutes
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 

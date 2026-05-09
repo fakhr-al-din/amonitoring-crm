@@ -1,10 +1,12 @@
 import pymysql
+from app.config import *
+
 
 def get_connection():
     return pymysql.connect(
-        host="localhost",
-        user="root",
-        password="root",
-        database="crm_db",
+        host=db_host,
+        user=db_user,
+        password=db_password,
+        database=db_name,
         cursorclass=pymysql.cursors.DictCursor
     )
