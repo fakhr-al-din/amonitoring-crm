@@ -1,5 +1,3 @@
-version: "3"
-
 services:
   db:
     container_name: "amoncrm-db"
@@ -8,28 +6,5 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
       MYSQL_DATABASE: ${DB_NAME}
-    # на проде бд наружу не должна будет светить
     ports:
       - "3306:3306" 
-    networks:
-      - amonnet
-  
-  backend:
-    container_name: "amoncrm-backend"
-    restart: unless-stopped
-    build:
-      context: ./Backend
-    environment:
-      DB_HOST: ${DB_HOST}
-      DB_NAME: ${DB_NAME}
-      DB_USER: ${DB_USER}
-      DB_PASSWORD: ${DB_PASSWORD}
-      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES}
-      SECRET_KEY: ${SECRET_KEY}
-    ports:
-      - "80:8000"
-    networks:
-      - amonnet
-
-networks:
-  amonnet:
