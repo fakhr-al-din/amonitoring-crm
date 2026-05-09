@@ -1,3 +1,4 @@
+from datetime import datetime
 from pydantic import BaseModel
 from typing import Optional
 
@@ -10,16 +11,19 @@ class RequestCreate(BaseModel):
     vehicle_id: int
     work_type: str
     visit_type: str
-    city: str | None = None  # <-- ДОБАВЛЕНО
+    city: str | None = None
     installation: InstallationDetails | None = None
 
 class RequestUpdate(BaseModel):
-    status: str | None = None
-    is_paid: Optional[bool] = None   # для обновления статуса оплаты
-    installation: InstallationDetails | None = None  # для обновления деталей установки
-    city: str | None = None  # <-- ДОБАВЛЕНО
-    work_type: str | None = None
+    client_id: int | None = None
+    vehicle_id: int | None = None
     visit_type: str | None = None
+    address: str | None = None
+    city: str | None = None
+    scheduled_at: datetime | None = None
+    status: str | None = None
+    is_paid: Optional[bool] = None
+    installation: InstallationDetails | None = None
 
 class CommentCreate(BaseModel):
     request_id: int
@@ -44,7 +48,7 @@ class ClientUpdate(BaseModel):
 
 class VehicleCreate(BaseModel):
     client_id: int
-    brand: str       # <-- УБЕДИСЬ ЧТО ТУТ ЕСТЬ BRAND
+    brand: str
     model: str
     plate_number: str
     vin: str | None = None

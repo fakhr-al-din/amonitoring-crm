@@ -134,13 +134,14 @@ def create_comment(data: CommentCreate, current_user: dict = Depends(get_current
 @router.patch("/{request_id}")
 def update_request(request_id: int, data: RequestUpdate, current_user: dict = Depends(get_current_user)):
     connection = get_connection()
+
     ALLOWED_TRANSITIONS = {
         "NEW": ["IN_PROGRESS", "CANCELLED"],
         "IN_PROGRESS": ["COMPLETED", "CANCELLED"],
         "COMPLETED": []
     }
-    
-    # Обычный TECHNICIAN вообще не имеет права сюда стучаться
+
+    # Обычный TECHNICIAN вообще не имеет права редактировать заявку
     if current_user["role"] == "TECHNICIAN":
         raise HTTPException(status_code=403, detail="Обычный монтажник может только просматривать заявки")
 
@@ -148,91 +149,271 @@ def update_request(request_id: int, data: RequestUpdate, current_user: dict = De
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT work_type, status, is_paid
+                SELECT 
+                    id,
+                    client_id,
+                    vehicle_id,
+                    work_type,
+                    visit_type,
+                    address,
+                    city,
+                    scheduled_at,
+                    status,
+                    is_paid
                 FROM requests
                 WHERE id = %s AND is_deleted = 0
                 """,
                 (request_id,)
             )
             req = cursor.fetchone()
+
             if not req:
                 raise HTTPException(status_code=404, detail="Заявка не найдена")
 
-            old_status = req["status"]
+            update_fields = []
+            update_values = []
 
-            # --- ЛОГИКА ГОРОДА ---
-            if data.city is not None:
-                if current_user["role"] not in ["ADMIN", "MANAGER"]:
-                    raise HTTPException(status_code=403, detail="Только Менеджер или Админ могут менять город")
-                cursor.execute("UPDATE requests SET city = %s WHERE id = %s", (data.city, request_id))
-
-            # --- ЛОГИКА ОПЛАТЫ ---
-            if data.is_paid is not None:
-                if current_user["role"] in ["ADMIN", "ACCOUNTANT"]:
-                    old_paid = bool(req["is_paid"])
-                    if old_paid != data.is_paid:
-                        paid_at_val = datetime.now() if data.is_paid else None
-                        cursor.execute(
-                            "UPDATE requests SET is_paid = %s, paid_at = %s WHERE id = %s",
-                            (data.is_paid, paid_at_val, request_id)
-                        )
-                        cursor.execute(
-                            "INSERT INTO request_history (request_id, user_id, action, old_value, new_value) VALUES (%s, %s, %s, %s, %s)",
-                            (request_id, current_user["id"], "PAYMENT_UPDATED", f"is_paid={old_paid}", f"is_paid={data.is_paid}")
-                        )
-                else:
-                    raise HTTPException(status_code=403, detail="Только Бухгалтер или Админ могут менять оплату")
-
-            # --- ЛОГИКА СТАТУСА ---
-            if data.status is not None and old_status != data.status:
-                # Админ, Менеджер и Старший монтажник могут менять статус
-                if current_user["role"] not in ["ADMIN", "MANAGER", "SENIOR_TECHNICIAN"]:
-                    raise HTTPException(status_code=403, detail="Недостаточно прав для изменения статуса")
-                    
-                if current_user["role"] not in ["ADMIN", "MANAGER"]:
-                    allowed = ALLOWED_TRANSITIONS.get(old_status, [])
-                    if data.status not in allowed:
-                        raise HTTPException(status_code=400, detail=f"Нельзя сменить {old_status} на {data.status}")
-                
-                cursor.execute("UPDATE requests SET status = %s WHERE id = %s", (data.status, request_id))
+            def add_history(action: str, old_value, new_value):
                 cursor.execute(
-                    "INSERT INTO request_history (request_id, user_id, action, old_value, new_value) VALUES (%s, %s, %s, %s, %s)",
-                    (request_id, current_user["id"], "STATUS_CHANGED", old_status, data.status)
+                    """
+                    INSERT INTO request_history 
+                    (request_id, user_id, action, old_value, new_value)
+                    VALUES (%s, %s, %s, %s, %s)
+                    """,
+                    (
+                        request_id,
+                        current_user["id"],
+                        action,
+                        str(old_value) if old_value is not None else None,
+                        str(new_value) if new_value is not None else None
+                    )
                 )
 
-            # --- ЛОГИКА ДЕТАЛЕЙ УСТАНОВКИ ---
+            def add_request_update(field_name: str, new_value, history_action: str):
+                old_value = req[field_name]
+
+                if old_value != new_value:
+                    update_fields.append(f"{field_name} = %s")
+                    update_values.append(new_value)
+                    add_history(history_action, old_value, new_value)
+
+            # --- client_id ---
+            if data.client_id is not None and data.client_id != req["client_id"]:
+                if current_user["role"] not in ["ADMIN", "MANAGER"]:
+                    raise HTTPException(status_code=403, detail="Только Менеджер или Админ могут менять клиента заявки")
+
+                cursor.execute(
+                    """
+                    SELECT id, is_deleted
+                    FROM clients
+                    WHERE id = %s
+                    """,
+                    (data.client_id,)
+                )
+                client = cursor.fetchone()
+
+                if not client:
+                    raise HTTPException(status_code=404, detail="Клиент не найден")
+
+                if client["is_deleted"]:
+                    raise HTTPException(status_code=400, detail="Нельзя привязать заявку к клиенту из корзины")
+
+                add_request_update("client_id", data.client_id, "CLIENT_CHANGED")
+
+            # --- vehicle_id ---
+            if data.vehicle_id is not None and data.vehicle_id != req["vehicle_id"]:
+                if current_user["role"] not in ["ADMIN", "MANAGER"]:
+                    raise HTTPException(status_code=403, detail="Только Менеджер или Админ могут менять машину заявки")
+
+                cursor.execute(
+                    """
+                    SELECT id, client_id, is_deleted
+                    FROM vehicles
+                    WHERE id = %s
+                    """,
+                    (data.vehicle_id,)
+                )
+                vehicle = cursor.fetchone()
+
+                if not vehicle:
+                    raise HTTPException(status_code=404, detail="Машина не найдена")
+
+                if vehicle["is_deleted"]:
+                    raise HTTPException(status_code=400, detail="Нельзя привязать заявку к машине из корзины")
+
+                # Машина должна принадлежать выбранному/текущему клиенту
+                target_client_id = data.client_id if data.client_id is not None else req["client_id"]
+
+                if vehicle["client_id"] != target_client_id:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Выбранная машина не принадлежит выбранному клиенту"
+                    )
+
+                add_request_update("vehicle_id", data.vehicle_id, "VEHICLE_CHANGED")
+
+            # --- visit_type ---
+            if data.visit_type is not None and data.visit_type != req["visit_type"]:
+                if current_user["role"] not in ["ADMIN", "MANAGER"]:
+                    raise HTTPException(status_code=403, detail="Только Менеджер или Админ могут менять тип визита")
+
+                allowed_visit_types = ["IN_OFFICE", "ON_SITE"]
+
+                if data.visit_type not in allowed_visit_types:
+                    raise HTTPException(status_code=400, detail="Некорректный тип визита")
+
+                add_request_update("visit_type", data.visit_type, "VISIT_TYPE_CHANGED")
+
+            # --- address ---
+            if data.address is not None and data.address != req["address"]:
+                if current_user["role"] not in ["ADMIN", "MANAGER"]:
+                    raise HTTPException(status_code=403, detail="Только Менеджер или Админ могут менять адрес")
+
+                add_request_update("address", data.address, "ADDRESS_CHANGED")
+
+            # --- city ---
+            if data.city is not None and data.city != req["city"]:
+                if current_user["role"] not in ["ADMIN", "MANAGER"]:
+                    raise HTTPException(status_code=403, detail="Только Менеджер или Админ могут менять город")
+
+                add_request_update("city", data.city, "CITY_CHANGED")
+
+            # --- scheduled_at ---
+            if data.scheduled_at is not None:
+                new_scheduled_at = data.scheduled_at.replace(tzinfo=None)
+
+                if req["scheduled_at"] != new_scheduled_at:
+                    if current_user["role"] not in ["ADMIN", "MANAGER"]:
+                        raise HTTPException(status_code=403, detail="Только Менеджер или Админ могут менять дату заявки")
+
+                    add_request_update("scheduled_at", new_scheduled_at, "SCHEDULED_AT_CHANGED")
+
+            # --- is_paid ---
+            if data.is_paid is not None:
+                if current_user["role"] not in ["ADMIN", "ACCOUNTANT"]:
+                    raise HTTPException(status_code=403, detail="Только Бухгалтер или Админ могут менять оплату")
+
+                old_paid = bool(req["is_paid"])
+                new_paid = bool(data.is_paid)
+
+                if old_paid != new_paid:
+                    paid_at_val = datetime.now() if new_paid else None
+
+                    update_fields.append("is_paid = %s")
+                    update_values.append(new_paid)
+
+                    update_fields.append("paid_at = %s")
+                    update_values.append(paid_at_val)
+
+                    add_history("PAYMENT_UPDATED", f"is_paid={old_paid}", f"is_paid={new_paid}")
+
+            # --- status ---
+            if data.status is not None and data.status != req["status"]:
+                if current_user["role"] not in ["ADMIN", "MANAGER", "SENIOR_TECHNICIAN"]:
+                    raise HTTPException(status_code=403, detail="Недостаточно прав для изменения статуса")
+
+                allowed_statuses = ["NEW", "IN_PROGRESS", "COMPLETED", "CANCELLED"]
+
+                if data.status not in allowed_statuses:
+                    raise HTTPException(status_code=400, detail="Некорректный статус заявки")
+
+                # ADMIN и MANAGER могут менять статус на любой
+                # SENIOR_TECHNICIAN — только по разрешённым переходам
+                if current_user["role"] not in ["ADMIN", "MANAGER"]:
+                    allowed = ALLOWED_TRANSITIONS.get(req["status"], [])
+                    if data.status not in allowed:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Нельзя сменить {req['status']} на {data.status}"
+                        )
+
+                add_request_update("status", data.status, "STATUS_CHANGED")
+
+            # --- installation details ---
             if data.installation and req["work_type"] == "INSTALLATION":
                 if current_user["role"] not in ["ADMIN", "MANAGER"]:
                     raise HTTPException(status_code=403, detail="Только Менеджер или Админ могут менять детали установки")
-                
-                cursor.execute("SELECT has_beacon, has_blocking FROM installation_details WHERE request_id = %s", (request_id,))
+
+                cursor.execute(
+                    """
+                    SELECT has_beacon, has_blocking
+                    FROM installation_details
+                    WHERE request_id = %s
+                    """,
+                    (request_id,)
+                )
                 old_install = cursor.fetchone()
-                new_v = f"beacon={int(data.installation.has_beacon)}, blocking={int(data.installation.has_blocking)}"
-                
+
+                new_has_beacon = int(data.installation.has_beacon)
+                new_has_blocking = int(data.installation.has_blocking)
+
                 if old_install:
-                    cursor.execute(
-                        "UPDATE installation_details SET has_beacon = %s, has_blocking = %s WHERE request_id = %s",
-                        (data.installation.has_beacon, data.installation.has_blocking, request_id)
-                    )
-                    old_v = f"beacon={old_install['has_beacon']}, blocking={old_install['has_blocking']}"
+                    old_has_beacon = int(old_install["has_beacon"])
+                    old_has_blocking = int(old_install["has_blocking"])
+
+                    if old_has_beacon != new_has_beacon:
+                        add_history("HAS_BEACON_CHANGED", old_has_beacon, new_has_beacon)
+
+                    if old_has_blocking != new_has_blocking:
+                        add_history("HAS_BLOCKING_CHANGED", old_has_blocking, new_has_blocking)
+
+                    if old_has_beacon != new_has_beacon or old_has_blocking != new_has_blocking:
+                        cursor.execute(
+                            """
+                            UPDATE installation_details
+                            SET has_beacon = %s,
+                                has_blocking = %s
+                            WHERE request_id = %s
+                            """,
+                            (new_has_beacon, new_has_blocking, request_id)
+                        )
                 else:
                     cursor.execute(
-                        "INSERT INTO installation_details (request_id, has_beacon, has_blocking) VALUES (%s, %s, %s)",
-                        (request_id, data.installation.has_beacon, data.installation.has_blocking)
+                        """
+                        INSERT INTO installation_details
+                        (request_id, has_beacon, has_blocking)
+                        VALUES (%s, %s, %s)
+                        """,
+                        (request_id, new_has_beacon, new_has_blocking)
                     )
-                    old_v = "none"
 
-                if old_v != new_v:
-                    cursor.execute(
-                        "INSERT INTO request_history (request_id, user_id, action, old_value, new_value) VALUES (%s, %s, %s, %s, %s)",
-                        (request_id, current_user["id"], "INSTALLATION_UPDATED", old_v, new_v)
+                    add_history(
+                        "INSTALLATION_DETAILS_CREATED",
+                        None,
+                        f"has_beacon={new_has_beacon}, has_blocking={new_has_blocking}"
                     )
+
+            elif data.installation and req["work_type"] != "INSTALLATION":
+                raise HTTPException(
+                    status_code=400,
+                    detail="Детали установки можно менять только для заявок типа INSTALLATION"
+                )
+
+            # --- основной UPDATE requests ---
+            if update_fields:
+                update_values.append(request_id)
+
+                sql = f"""
+                UPDATE requests
+                SET {', '.join(update_fields)}
+                WHERE id = %s
+                """
+
+                cursor.execute(sql, tuple(update_values))
 
             connection.commit()
-            return {"message": "Request updated successfully"}
+
+            return {
+                "message": "Request updated successfully",
+                "updated_fields": len(update_fields)
+            }
+
+    except HTTPException:
+        connection.rollback()
+        raise
     except Exception as e:
         connection.rollback()
-        raise e
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
         connection.close()
 
